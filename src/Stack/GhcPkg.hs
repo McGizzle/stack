@@ -86,6 +86,7 @@ createDatabase wc db = do
         -- ghc-pkg requires that the database directory does not exist
         -- yet. If the directory exists but the package.cache file
         -- does, we're in a corrupted state. Check for that state.
+        -- ---------------------------
         dirExists <- doesDirExist db
         args <- if dirExists
             then do

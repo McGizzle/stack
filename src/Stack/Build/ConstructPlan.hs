@@ -18,6 +18,8 @@ module Stack.Build.ConstructPlan
     ( constructPlan
     ) where
 
+import Debug.Trace
+
 import           Stack.Prelude
 import           Control.Monad.RWS.Strict
 import           Control.Monad.State.Strict (execState)
@@ -183,13 +185,19 @@ constructPlan :: forall env. HasEnvConfig env
               -> RIO env Plan
 constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage0 sourceMap installedMap initialBuildSteps = do
     logDebug "Constructing the build plan"
-
     econfig <- view envConfigL
+-- onWanted = I think these are both empty because extraToBuild0 is = []
+-- inner = 
     let onWanted = void . addDep False . packageName . lpPackage
     let inner = do
             mapM_ onWanted $ filter lpWanted locals
             mapM_ (addDep False) $ Set.toList extraToBuild0
+-- lp = testbuild 
     lp <- getLocalPackages
+    
+   -- logInfo $ T.pack $ "\n\nConstructBuildPlan -> lpProject: "++ show (Map.keys (lpProject lp)) 
+    --logInfo $ T.pack $ "ConstructBuildPlan -> lpDependencies: "++ show (Map.keys (lpDependencies lp))  ++"\n\n"
+    
     let ctx = mkCtx econfig lp
     ((), m, W efinals installExes dirtyReason deps warnings parents) <-
         liftIO $ runRWST inner ctx M.empty
@@ -199,8 +207,17 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
         (errlibs, adrs) = partitionEithers $ map toEither $ M.toList m
         (errfinals, finals) = partitionEithers $ map toEither $ M.toList efinals
         errs = errlibs ++ errfinals
+-- errlibs = []
+-- adrs = conatins base and then info anout testbuild including dirty files
+-- errfinals = []
+-- finals = []
+    --logInfo $ T.pack $ "\n\nConstructBuildPlan -> adrs: "++ show adrs  ++"\n\n"
     if null errs
         then do
+-- task = The Task -> contains lpDirty 
+-- tasks = 
+-- takeSubset = 
+-- returned Plan = Contains the task, lpComponent Files 
             let toTask (_, ADRFound _ _) = Nothing
                 toTask (name, ADRToInstall task) = Just (name, task)
                 tasks = M.fromList $ mapMaybe toTask adrs
@@ -209,16 +226,18 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
                         BSAll -> id
                         BSOnlySnapshot -> stripLocals
                         BSOnlyDependencies -> stripNonDeps deps
-            return $ takeSubset Plan
-                { planTasks = tasks
-                , planFinals = M.fromList finals
-                , planUnregisterLocal = mkUnregisterLocal tasks dirtyReason localDumpPkgs sourceMap initialBuildSteps
-                , planInstallExes =
-                    if boptsInstallExes (bcoBuildOpts baseConfigOpts0) ||
-                       boptsInstallCompilerTool (bcoBuildOpts baseConfigOpts0)
-                        then installExes
-                        else Map.empty
-                }
+            let retPlan = takeSubset Plan
+                            { planTasks = tasks
+                            , planFinals = M.fromList finals
+                            , planUnregisterLocal = mkUnregisterLocal tasks dirtyReason localDumpPkgs sourceMap initialBuildSteps
+                            , planInstallExes =
+                                if boptsInstallExes (bcoBuildOpts baseConfigOpts0) ||
+                                   boptsInstallCompilerTool (bcoBuildOpts baseConfigOpts0)
+                                      then installExes
+                                      else Map.empty
+                            }
+            --logInfo $ T.pack $ "\n\nConstructBuildPlan -> retPlan: "++ show retPlan  ++"\n\n"
+            return retPlan
         else do
             planDebug $ show errs
             stackYaml <- view stackYamlL
@@ -228,7 +247,7 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
     mkCtx econfig lp = Ctx
         { ls = ls0
         , baseConfigOpts = baseConfigOpts0
-        , loadPackage = \x y z -> runRIO econfig $ loadPackage0 x y z
+        , loadPackage = \x y z -> trace ("\n\nConstructPlan: mkCtx -> x:" ++ show x ++ "\n\n") $ runRIO econfig $ loadPackage0 x y z
         , combinedMap = combineMap sourceMap installedMap
         , toolToPackages = \name ->
           maybe Map.empty (Map.fromSet (const Cabal.anyVersion)) $
@@ -237,12 +256,13 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
         , callStack = []
         , extraToBuild = extraToBuild0
         , getVersions = runRIO econfig . getPackageVersions
+        -- DEBUG -----------------------------
         , wanted = wantedLocalPackages locals <> extraToBuild0
-        , localNames = Set.fromList $ map (packageName . lpPackage) locals
+        , localNames = set 
         }
       where
         toolMap = getToolMap ls0 lp
-
+        set = Set.fromList $ map (packageName . lpPackage) locals
 -- | State to be maintained during the calculation of local packages
 -- to unregister.
 data UnregisterState = UnregisterState
@@ -265,11 +285,12 @@ mkUnregisterLocal :: Map PackageName Task
                   -- build - don't unregister target packages.
                   -> Map GhcPkgId (PackageIdentifier, Text)
 mkUnregisterLocal tasks dirtyReason localDumpPkgs sourceMap initialBuildSteps =
+
     -- We'll take multiple passes through the local packages. This
     -- will allow us to detect that a package should be unregistered,
     -- as well as all packages directly or transitively depending on
     -- it.
-    loop Map.empty localDumpPkgs
+    trace ("ConstructPlan -> mkUnregisterLocal -> localDumps: " ++ show localDumpPkgs) $ loop Map.empty localDumpPkgs
   where
     loop toUnregister keep
         -- If any new packages were added to the unregister Map, we
@@ -297,9 +318,11 @@ mkUnregisterLocal tasks dirtyReason localDumpPkgs sourceMap initialBuildSteps =
             -- indicate that a package was in fact added to the
             -- unregister Map so we loop again.
             Just reason -> put us
-                { usToUnregister = Map.insert gid (ident, reason) (usToUnregister us)
-                , usAnyAdded = True
-                }
+            ----- DEBUG -----------------------------------------------------------------------------------------------------------
+                    { usToUnregister = Map.insert gid (ident, reason) (usToUnregister us)
+                    , usAnyAdded = True
+                    }
+            -----------------------------------------------------------------------------------------------------------------------
       where
         gid = dpGhcPkgId dp
         ident = dpPackageIdent dp
@@ -470,6 +493,9 @@ installPackage :: Bool -- ^ is this being used by a dependency?
                -> Maybe Installed
                -> M (Either ConstructPlanException AddDepRes)
 installPackage treatAsDep name ps minstalled = do
+    ---- DEBUG ------------------------------------------------------------
+--    logInfo $ T.pack $ "\n\n installPackage -> packagename: " ++ show name
+    -----------------------------------------------------------------------
     ctx <- ask
     case ps of
         PSIndex _ flags ghcOptions pkgLoc -> do
@@ -540,6 +566,7 @@ installPackageGivenDeps :: Bool
                            , InstallLocation )
                         -> M AddDepRes
 installPackageGivenDeps isAllInOne ps package minstalled (missing, present, minLoc) = do
+    liftIO $ traceIO $ "\ninstallPackageGivenDeps"
     let name = packageName package
     ctx <- ask
     mRightVersionInstalled <- case (minstalled, Set.null missing) of
@@ -610,8 +637,13 @@ addEllipsis t
 addPackageDeps :: Bool -- ^ is this being used by a dependency?
                -> Package -> M (Either ConstructPlanException (Set PackageIdentifier, Map PackageIdentifier GhcPkgId, InstallLocation))
 addPackageDeps treatAsDep package = do
+    -- DEBUG ----------------------------
+    --logInfo $ T.pack $ "\n\naddPackageDeps -> package: " ++ show package
+    ------------------------------------------------------------------
+
     ctx <- ask
     deps' <- packageDepsWithTools package
+    liftIO $ traceIO $ "\n\naddPackageDeps -> deps " ++ show deps'
     deps <- forM (Map.toList deps') $ \(depname, (range, depType)) -> do
         eres <- addDep treatAsDep depname
         let getLatestApplicable = do
@@ -1152,4 +1184,4 @@ instance (Ord k, Monoid a) => Monoid (MonoidMap k a) where
 
 -- Switch this to 'True' to enable some debugging putStrLn in this module
 planDebug :: MonadIO m => String -> m ()
-planDebug = if False then liftIO . putStrLn else \_ -> return ()
+planDebug = if True then liftIO . putStrLn else \_ -> return ()

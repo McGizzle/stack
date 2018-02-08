@@ -78,10 +78,18 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
     let profiling = boptsLibProfile bopts || boptsExeProfile bopts
     let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)
 
+    -- targets = [testbuild] 
+    -- ls = loaded snapshot
+    -- locals = local package (includes lpDirty)
+    -- extrasToBuild = []
+    -- sourceMap = similar to ls, contains packages and their hashes?
     (targets, ls, locals, extraToBuild, sourceMap) <- loadSourceMapFull NeedTargets boptsCli
+
+    --logInfo $ T.pack $ "\nBuild -> build -> targets: " ++ show (Map.keys targets)
 
     -- Set local files, necessary for file watching
     stackYaml <- view stackYamlL
+    -- Whats going on here ?
     liftIO $ setLocalFiles
            $ Set.insert stackYaml
            $ Set.unions
@@ -93,6 +101,10 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
              -- change. That's a possible optimization to consider.
              [lpFiles lp | PSFiles lp _ <- Map.elems sourceMap]
 
+    -- installedMap = map of installed packages
+    -- globalDumpPkgs = looks like a load of packages with install location 
+    -- snapshotDumpPkgs = 
+    -- localDumpPkgs = []
     (installedMap, globalDumpPkgs, snapshotDumpPkgs, localDumpPkgs) <-
         getInstalled
                      GetInstalledOpts
@@ -101,8 +113,12 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
                          , getInstalledSymbols   = symbols }
                      sourceMap
 
+    --logInfo $ T.pack $ "\n\nBuild -> build -> globalDumpPkgs: " ++ show localDumpPkgs ++ "\n\n"
+
     baseConfigOpts <- mkBaseConfigOpts boptsCli
     plan <- constructPlan ls baseConfigOpts locals extraToBuild localDumpPkgs loadPackage sourceMap installedMap (boptsCLIInitialBuildSteps boptsCli)
+
+    --logInfo $ T.pack $ "Build -> build -> plan: " ++ show installedMap
 
     allowLocals <- view $ configL.to configAllowLocals
     unless allowLocals $ case justLocals plan of
@@ -115,7 +131,9 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
        -- NOTE: This policy is too conservative.  In the future we should be able to
        -- schedule unlocking as an Action that happens after all non-local actions are
        -- complete.
-      (Just lk,True) -> do logDebug "All installs are local; releasing snapshot lock early."
+       --
+       -- THis build aint 'all local' takes second case
+      (Just lk,True) -> do logInfo "All installs are local; releasing snapshot lock early."
                            liftIO $ unlockFile lk
       _ -> return ()
 
@@ -125,7 +143,9 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
 
     when (boptsPreFetch bopts) $
         preFetch plan
-
+    logInfo "\nPrinting Plan"
+    printPlan plan
+    logInfo "\n"
     if boptsCLIDryrun boptsCli
         then printPlan plan
         else executePlan boptsCli baseConfigOpts locals

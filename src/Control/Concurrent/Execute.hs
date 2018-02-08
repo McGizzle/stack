@@ -12,11 +12,14 @@ module Control.Concurrent.Execute
     , runActions
     ) where
 
+import Debug.Trace
+
 import           Control.Concurrent.STM   (retry)
 import           Stack.Prelude
 import           Data.List (sortBy)
 import qualified Data.Set                 as Set
 import           Stack.Types.PackageIdentifier
+import qualified Data.Text as Text
 
 data ActionType
     = ATBuild
@@ -101,7 +104,11 @@ sortActions = sortBy (compareConcurrency `on` actionConcurrency)
     compareConcurrency _ _ = EQ
 
 runActions' :: ExecuteState -> IO ()
-runActions' ExecuteState {..} =
+runActions' ExecuteState {..} = do
+    actions <- atomically $ readTVar esActions
+  ------DEBUG -------------------------------------------
+  --  traceIO $ "\n\nCOntrol.Concurrent -> runAction' -> actionId: "++ show (actionId <$> actions) ++"\n\n" 
+  ---------------------------------------------------------
     loop
   where
     breakOnErrs inner = do
