@@ -2,20 +2,20 @@
 
 ## Order of Operation
 
-1. Stack.build: build
-   -> Stack.Build.ConstructPlan: constructPlan  -> [Plan]())
-    * Task within the plan contains the files we want [example]()
-   -> Stack.Build.Execute: executePlan
-
-2. Stack.Build.Execute: executePlan
-   -> Stack.Build.Execute: executePlan' 
-       -> Stack.Build.Execute: toActions -> [Action]
-         * Places singleBuild in actionDo, this runs cabal
-       
+* Stack.build: build
+   * Stack.Build.ConstructPlan: constructPlan  -> **Plan**
+   
+   `Task within the plan contains the files we want (example below)`
+   
+   * Stack.Build.Execute: executePlan
+      * Stack.Build.Execute: executePlan' `internal`
+      * Stack.Build.Execute: toActions -> **Action**
+            
+   `Places singleBuild function in actionDo, this runs cabal`
 
   
   
-  ### Plan (contains the files we want)
+### Plan
   ```Haskell
   data Plan = Plan
     { planTasks :: !(Map PackageName Task)
@@ -28,6 +28,8 @@
     }
     deriving Show
   ```
+  
+### Action
   ```Haskell
   data Action = Action
     { actionId :: !ActionId
@@ -36,9 +38,9 @@
         ^ Singlebuild
     , actionConcurrency :: !Concurrency
     }
-    
  ```
- ### ConstructPlan: Task
+ 
+### ConstructPlan: Task
  ```Haskell
 Task {taskProvides = "testbuild-0.1.0.0", taskType = TTFiles (LocalPackage {lpPackage = Package {packageName = testbuild, packageVersion = 0.1.0.0, packageLicense = BSD3, packageFiles = <GetPackageFiles>, packageDeps = fromList [(base,IntersectVersionRanges (UnionVersionRanges (ThisVersion (mkVersion [4,7])) (LaterVersion (mkVersion [4,7]))) (EarlierVersion (mkVersion [5])))], packageTools = fromList [], packageAllDeps = fromList [base], packageGhcOptions = [], packageFlags = fromList [], packageDefaultFlags = fromList [], packageLibraries = NoLibraries, packageTests = fromList [], packageBenchmarks = fromList [], packageExes = fromList ["testbuild"], packageOpts = <GetPackageOpts>, packageHasExposedModules = False, packageBuildType = Just Simple, packageSetupDeps = Nothing},
  
