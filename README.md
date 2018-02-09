@@ -11,7 +11,45 @@
       * Stack.Build.Execute: executePlan' `internal`
       * Stack.Build.Execute: toActions -> **Action**
             
-   `Places singleBuild function in actionDo, this runs cabal`
+      `Places singleBuild function in actionDo, this runs cabal`
+     
+      * Stack.Control.Concurrent: runAction
+      
+      ```Haskell
+      errs <- liftIO $ runActions threads keepGoing actions $ \doneVar actionsVar -> do
+      ```
+      `singleBuild is run by this function`
+      
+      * Stack.Build.Execute: singleBuild
+      
+      ```Haskell
+      realConfigAndBuild cache allDepsMap = withSingleContext ac ee task (Just allDepsMap) Nothing
+        $ \package cabalfp pkgDir cabal announce _console _mlogFile -> do
+      ```
+      
+      `this calls 'withSingleContext' wich provides 'cabal' which is a function which executes cabal`
+      
+      `Here is where cabal is run, the third case is the one taken`
+      
+      ```Haskell
+      cabal stripTHLoading (("build" :) $ (++ extraOpts) $
+            case (taskType, taskAllInOne, isFinalBuild) of
+                (_, True, True) -> error "Invariant violated: cannot have an all-in-one build that also has a final build step."
+                (TTFiles lp _, False, False) -> primaryComponentOptions executableBuildStatuses lp
+                (TTFiles lp _, False, True) -> finalComponentOptions lp
+                
+                -- This pattern is matched, the values = ["exe:testbuild"]
+                (TTFiles lp _, True, False) -> primaryComponentOptions executableBuildStatuses lp ++ finalComponentOptions lp
+                (TTIndex{}, _, _) -> [])
+          `catch` \ex -> case ex of
+              CabalExitedUnsuccessfully{} -> postBuildCheck False >> throwM ex
+              _ -> throwM ex
+        postBuildCheck True
+      ```
+      This makes me think ["exe:testbuild"] is a file/folder containing everything cabal should buld with.
+      
+      
+      
 
   
   
