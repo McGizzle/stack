@@ -9,11 +9,11 @@
    
    * Stack.Build.Execute: executePlan
       * Stack.Build.Execute: executePlan' `internal`
-      * Stack.Build.Execute: toActions -> **Action**
+      * Stack.Build.Execute: toActions -> **[Action]**
             
       `Places singleBuild function in actionDo, this runs cabal`
      
-      * Stack.Control.Concurrent: runAction
+      * Stack.Control.Concurrent: runActions `This is a helper function for running Actions concurrently`
       
       ```Haskell
       errs <- liftIO $ runActions threads keepGoing actions $ \doneVar actionsVar -> do
@@ -38,7 +38,7 @@
                 (TTFiles lp _, False, False) -> primaryComponentOptions executableBuildStatuses lp
                 (TTFiles lp _, False, True) -> finalComponentOptions lp
                 
-                -- This pattern is matched, the values = ["exe:testbuild"]
+                -- This pattern is matched, the values returned = ["exe:testbuild"]
                 (TTFiles lp _, True, False) -> primaryComponentOptions executableBuildStatuses lp ++ finalComponentOptions lp
                 (TTIndex{}, _, _) -> [])
           `catch` \ex -> case ex of
@@ -46,7 +46,7 @@
               _ -> throwM ex
         postBuildCheck True
       ```
-      This makes me think ["exe:testbuild"] is a file/folder containing everything cabal should buld with.
+      ["exe:testbuild"] is a file/folder containing everything cabal should build with.
       
       
       
