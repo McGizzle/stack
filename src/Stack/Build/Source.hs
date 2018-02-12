@@ -1,10 +1,10 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE TupleSections         #-}
 -- Load information on package sources
 module Stack.Build.Source
     ( loadSourceMap
@@ -15,34 +15,36 @@ module Stack.Build.Source
     , addUnlistedToBuildCache
     ) where
 
-import              Stack.Prelude
-import              Crypto.Hash (Digest, SHA256(..))
-import              Crypto.Hash.Conduit (sinkHash)
-import qualified    Data.ByteArray as Mem (convert)
-import qualified    Data.ByteString as S
-import              Data.Conduit (ZipSink (..))
-import qualified    Data.Conduit.List as CL
-import qualified    Data.HashSet as HashSet
-import              Data.List
-import qualified    Data.Map as Map
-import qualified    Data.Map.Strict as M
-import qualified    Data.Set as Set
-import              Stack.Build.Cache
-import              Stack.Build.Target
-import              Stack.Config (getLocalPackages)
-import              Stack.Constants (wiredInPackages)
-import              Stack.Package
-import              Stack.PackageLocation
-import              Stack.Types.Build
-import              Stack.Types.BuildPlan
-import              Stack.Types.Config
-import              Stack.Types.FlagName
-import              Stack.Types.NamedComponent
-import              Stack.Types.Package
-import              Stack.Types.PackageName
-import qualified    System.Directory as D
-import              System.FilePath (takeFileName)
-import              System.IO.Error (isDoesNotExistError)
+import           Debug.Trace
+
+import           Crypto.Hash                (Digest, SHA256 (..))
+import           Crypto.Hash.Conduit        (sinkHash)
+import qualified Data.ByteArray             as Mem (convert)
+import qualified Data.ByteString            as S
+import           Data.Conduit               (ZipSink (..))
+import qualified Data.Conduit.List          as CL
+import qualified Data.HashSet               as HashSet
+import           Data.List
+import qualified Data.Map                   as Map
+import qualified Data.Map.Strict            as M
+import qualified Data.Set                   as Set
+import           Stack.Build.Cache
+import           Stack.Build.Target
+import           Stack.Config               (getLocalPackages)
+import           Stack.Constants            (wiredInPackages)
+import           Stack.Package
+import           Stack.PackageLocation
+import           Stack.Prelude
+import           Stack.Types.Build
+import           Stack.Types.BuildPlan
+import           Stack.Types.Config
+import           Stack.Types.FlagName
+import           Stack.Types.NamedComponent
+import           Stack.Types.Package
+import           Stack.Types.PackageName
+import qualified System.Directory           as D
+import           System.FilePath            (takeFileName)
+import           System.IO.Error            (isDoesNotExistError)
 
 -- | Like 'loadSourceMapFull', but doesn't return values that aren't as
 -- commonly needed.
@@ -156,8 +158,8 @@ getGhcOptions bconfig boptsCli name isTarget isLocal = concat
     config = view configL bconfig
     includeExtraOptions =
         case configApplyGhcOptions config of
-            AGOTargets -> isTarget
-            AGOLocals -> isLocal
+            AGOTargets    -> isTarget
+            AGOLocals     -> isLocal
             AGOEverything -> True
 
 splitComponents :: [NamedComponent]
@@ -211,7 +213,7 @@ loadLocalPackage isLocal boptsCli targets (name, lpv) = do
             Just _ ->
               let hasLibrary =
                     case packageLibraries pkg of
-                      NoLibraries -> False
+                      NoLibraries    -> False
                       HasLibraries _ -> True
                in hasLibrary || not (Set.null nonLibComponents)
 
@@ -340,7 +342,7 @@ checkFlagsUsed boptsCli lps extraDeps snapshot = do
                         else
                             case Map.lookup name snapshot of
                                 Nothing -> Just $ UFNoPackage source name
-                                Just _ -> Just $ UFSnapshot name
+                                Just _  -> Just $ UFSnapshot name
                 -- Package exists locally, let's check if the flags are defined
                 Just pkg ->
                     let unused = Set.difference (Map.keysSet userFlags) (packageDefinedFlags pkg)

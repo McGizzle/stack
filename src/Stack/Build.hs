@@ -1,14 +1,14 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TupleSections         #-}
 
 -- | Build the project.
 
@@ -21,21 +21,21 @@ module Stack.Build
   ,CabalVersionException(..))
   where
 
-import           Stack.Prelude
-import           Data.Aeson (Value (Object, Array), (.=), object)
-import qualified Data.HashMap.Strict as HM
-import           Data.List ((\\))
-import           Data.List.Extra (groupSort)
-import           Data.List.NonEmpty (NonEmpty(..))
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Map as Map
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import           Data.Text.Encoding (decodeUtf8)
-import qualified Data.Text.IO as TIO
-import           Data.Text.Read (decimal)
-import qualified Data.Vector as V
-import qualified Data.Yaml as Yaml
+import           Data.Aeson                    (Value (Array, Object), object,
+                                                (.=))
+import qualified Data.HashMap.Strict           as HM
+import           Data.List                     ((\\))
+import           Data.List.Extra               (groupSort)
+import           Data.List.NonEmpty            (NonEmpty (..))
+import qualified Data.List.NonEmpty            as NE
+import qualified Data.Map                      as Map
+import qualified Data.Set                      as Set
+import qualified Data.Text                     as T
+import           Data.Text.Encoding            (decodeUtf8)
+import qualified Data.Text.IO                  as TIO
+import           Data.Text.Read                (decimal)
+import qualified Data.Vector                   as V
+import qualified Data.Yaml                     as Yaml
 import           Stack.Build.ConstructPlan
 import           Stack.Build.Execute
 import           Stack.Build.Haddock
@@ -43,7 +43,8 @@ import           Stack.Build.Installed
 import           Stack.Build.Source
 import           Stack.Build.Target
 import           Stack.Package
-import           Stack.PackageLocation (parseSingleCabalFileIndex)
+import           Stack.PackageLocation         (parseSingleCabalFileIndex)
+import           Stack.Prelude
 import           Stack.Types.Build
 import           Stack.Types.BuildPlan
 import           Stack.Types.Config
@@ -57,10 +58,13 @@ import           Stack.Types.Version
 #ifdef WINDOWS
 import           Stack.Types.Compiler
 #endif
-import           System.FileLock (FileLock, unlockFile)
+import           System.FileLock               (FileLock, unlockFile)
 
 #ifdef WINDOWS
-import           System.Win32.Console (setConsoleCP, setConsoleOutputCP, getConsoleCP, getConsoleOutputCP)
+import           System.Win32.Console          (getConsoleCP,
+                                                getConsoleOutputCP,
+                                                setConsoleCP,
+                                                setConsoleOutputCP)
 #endif
 
 -- | Build.
@@ -78,7 +82,7 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
     let profiling = boptsLibProfile bopts || boptsExeProfile bopts
     let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)
 
-    -- targets = [testbuild] 
+    -- targets = [testbuild]
     -- ls = loaded snapshot
     -- locals = local package (includes lpDirty)
     -- extrasToBuild = []
@@ -102,8 +106,8 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
              [lpFiles lp | PSFiles lp _ <- Map.elems sourceMap]
 
     -- installedMap = map of installed packages
-    -- globalDumpPkgs = looks like a load of packages with install location 
-    -- snapshotDumpPkgs = 
+    -- globalDumpPkgs = looks like a load of packages with install location
+    -- snapshotDumpPkgs =
     -- localDumpPkgs = []
     (installedMap, globalDumpPkgs, snapshotDumpPkgs, localDumpPkgs) <-
         getInstalled
@@ -117,12 +121,12 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
 
     baseConfigOpts <- mkBaseConfigOpts boptsCli
     plan <- constructPlan ls baseConfigOpts locals extraToBuild localDumpPkgs loadPackage sourceMap installedMap (boptsCLIInitialBuildSteps boptsCli)
-
+    --liftIO $ traceIO $ "\nPlan -> " ++ show plan
     --logInfo $ T.pack $ "Build -> build -> plan: " ++ show installedMap
 
     allowLocals <- view $ configL.to configAllowLocals
     unless allowLocals $ case justLocals plan of
-      [] -> return ()
+      []           -> return ()
       localsIdents -> throwM $ LocalPackagesPresent localsIdents
 
     -- If our work to do is all local, let someone else have a turn with the snapshot.
@@ -344,9 +348,9 @@ fixCodePage inner = do
 
         case (setInput, setOutput) of
             (False, False) -> return ()
-            (True, True) -> warn ""
-            (True, False) -> warn " input"
-            (False, True) -> warn " output"
+            (True, True)   -> warn ""
+            (True, False)  -> warn " input"
+            (False, True)  -> warn " output"
 
         fixInput $ fixOutput inner
     expected = 65001 -- UTF-8
@@ -373,7 +377,7 @@ queryBuildInfo selectors0 =
         case value of
             Object o ->
                 case HM.lookup sel o of
-                    Nothing -> err "Selector not found"
+                    Nothing     -> err "Selector not found"
                     Just value' -> cont value'
             Array v ->
                 case decimal sel of

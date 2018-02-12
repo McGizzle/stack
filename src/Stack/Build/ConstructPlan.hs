@@ -1,52 +1,54 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE ViewPatterns               #-}
 -- | Construct a @Plan@ for how to build
 module Stack.Build.ConstructPlan
     ( constructPlan
     ) where
 
-import Debug.Trace
+import           Debug.Trace
 
-import           Stack.Prelude
 import           Control.Monad.RWS.Strict
-import           Control.Monad.State.Strict (execState)
-import qualified Data.HashSet as HashSet
+import           Control.Monad.State.Strict    (execState)
+import qualified Data.HashSet                  as HashSet
 import           Data.List
-import           Data.List.Extra (nubOrd)
-import qualified Data.Map.Strict as M
-import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import           Data.Text.Encoding (decodeUtf8With)
-import           Data.Text.Encoding.Error (lenientDecode)
-import qualified Distribution.Text as Cabal
-import qualified Distribution.Version as Cabal
-import           Distribution.Types.BuildType (BuildType (Configure))
-import           Generics.Deriving.Monoid (memptydefault, mappenddefault)
-import           Lens.Micro (lens)
+import           Data.List.Extra               (nubOrd)
+import qualified Data.Map.Strict               as M
+import qualified Data.Map.Strict               as Map
+import qualified Data.Set                      as Set
+import qualified Data.Text                     as T
+import           Data.Text.Encoding            (decodeUtf8With)
+import           Data.Text.Encoding.Error      (lenientDecode)
+import qualified Distribution.Text             as Cabal
+import           Distribution.Types.BuildType  (BuildType (Configure))
+import qualified Distribution.Version          as Cabal
+import           Generics.Deriving.Monoid      (mappenddefault, memptydefault)
+import           Lens.Micro                    (lens)
+import           RIO.Process                   (HasEnvOverride (..),
+                                                findExecutable)
 import           Stack.Build.Cache
 import           Stack.Build.Haddock
 import           Stack.Build.Installed
 import           Stack.Build.Source
 import           Stack.BuildPlan
-import           Stack.Config (getLocalPackages)
+import           Stack.Config                  (getLocalPackages)
 import           Stack.Constants
 import           Stack.Package
 import           Stack.PackageDump
 import           Stack.PackageIndex
+import           Stack.Prelude
 import           Stack.PrettyPrint
 import           Stack.Types.Build
 import           Stack.Types.BuildPlan
@@ -60,8 +62,7 @@ import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Runner
 import           Stack.Types.Version
-import           System.IO (putStrLn)
-import           RIO.Process (findExecutable, HasEnvOverride (..))
+import           System.IO                     (putStrLn)
 
 data PackageInfo
     =
@@ -86,7 +87,7 @@ combineSourceInstalled ps (location, installed) =
     assert (piiLocation ps == location) $
     case location of
         -- Always trust something in the snapshot
-        Snap -> PIOnlyInstalled location installed
+        Snap  -> PIOnlyInstalled location installed
         Local -> PIBoth ps installed
 
 type CombinedMap = Map PackageName PackageInfo
@@ -105,16 +106,16 @@ data AddDepRes
 type ParentMap = MonoidMap PackageName (First Version, [(PackageIdentifier, VersionRange)])
 
 data W = W
-    { wFinals :: !(Map PackageName (Either ConstructPlanException Task))
-    , wInstall :: !(Map Text InstallLocation)
+    { wFinals   :: !(Map PackageName (Either ConstructPlanException Task))
+    , wInstall  :: !(Map Text InstallLocation)
     -- ^ executable to be installed, and location where the binary is placed
-    , wDirty :: !(Map PackageName Text)
+    , wDirty    :: !(Map PackageName Text)
     -- ^ why a local package is considered dirty
-    , wDeps :: !(Set PackageName)
+    , wDeps     :: !(Set PackageName)
     -- ^ Packages which count as dependencies
     , wWarnings :: !([Text] -> [Text])
     -- ^ Warnings
-    , wParents :: !ParentMap
+    , wParents  :: !ParentMap
     -- ^ Which packages a given package depends on, along with the package's version
     } deriving Generic
 instance Monoid W where
@@ -187,19 +188,20 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
     logDebug "Constructing the build plan"
     econfig <- view envConfigL
 -- onWanted = I think these are both empty because extraToBuild0 is = []
--- inner = 
+-- inner =
     let onWanted = void . addDep False . packageName . lpPackage
     let inner = do
             mapM_ onWanted $ filter lpWanted locals
             mapM_ (addDep False) $ Set.toList extraToBuild0
--- lp = testbuild 
+-- lp = testbuild
     lp <- getLocalPackages
-    
-   -- logInfo $ T.pack $ "\n\nConstructBuildPlan -> lpProject: "++ show (Map.keys (lpProject lp)) 
+
+   -- logInfo $ T.pack $ "\n\nConstructBuildPlan -> lpProject: "++ show (Map.keys (lpProject lp))
     --logInfo $ T.pack $ "ConstructBuildPlan -> lpDependencies: "++ show (Map.keys (lpDependencies lp))  ++"\n\n"
-    
+
     let ctx = mkCtx econfig lp
     ((), m, W efinals installExes dirtyReason deps warnings parents) <-
+            -- Is this where the executable is made?
         liftIO $ runRWST inner ctx M.empty
     mapM_ logWarn (warnings [])
     let toEither (_, Left e)  = Left e
@@ -214,17 +216,17 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
     --logInfo $ T.pack $ "\n\nConstructBuildPlan -> adrs: "++ show adrs  ++"\n\n"
     if null errs
         then do
--- task = The Task -> contains lpDirty 
--- tasks = 
--- takeSubset = 
--- returned Plan = Contains the task, lpComponent Files 
-            let toTask (_, ADRFound _ _) = Nothing
+-- task = The Task -> contains lpDirty
+-- tasks =
+-- takeSubset =
+-- returned Plan = Contains the task, lpComponent Files
+            let toTask (_, ADRFound _ _)         = Nothing
                 toTask (name, ADRToInstall task) = Just (name, task)
                 tasks = M.fromList $ mapMaybe toTask adrs
                 takeSubset =
                     case boptsCLIBuildSubset $ bcoBuildOptsCLI baseConfigOpts0 of
-                        BSAll -> id
-                        BSOnlySnapshot -> stripLocals
+                        BSAll              -> id
+                        BSOnlySnapshot     -> stripLocals
                         BSOnlyDependencies -> stripNonDeps deps
             let retPlan = takeSubset Plan
                             { planTasks = tasks
@@ -247,7 +249,7 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
     mkCtx econfig lp = Ctx
         { ls = ls0
         , baseConfigOpts = baseConfigOpts0
-        , loadPackage = \x y z -> trace ("\n\nConstructPlan: mkCtx -> x:" ++ show x ++ "\n\n") $ runRIO econfig $ loadPackage0 x y z
+        , loadPackage = \x y z -> runRIO econfig $ loadPackage0 x y z
         , combinedMap = combineMap sourceMap installedMap
         , toolToPackages = \name ->
           maybe Map.empty (Map.fromSet (const Cabal.anyVersion)) $
@@ -258,7 +260,7 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
         , getVersions = runRIO econfig . getPackageVersions
         -- DEBUG -----------------------------
         , wanted = wantedLocalPackages locals <> extraToBuild0
-        , localNames = set 
+        , localNames = set
         }
       where
         toolMap = getToolMap ls0 lp
@@ -267,8 +269,8 @@ constructPlan ls0 baseConfigOpts0 locals extraToBuild0 localDumpPkgs loadPackage
 -- to unregister.
 data UnregisterState = UnregisterState
     { usToUnregister :: !(Map GhcPkgId (PackageIdentifier, Text))
-    , usKeep :: ![DumpPackage () () ()]
-    , usAnyAdded :: !Bool
+    , usKeep         :: ![DumpPackage () () ()]
+    , usAnyAdded     :: !Bool
     }
 
 -- | Determine which packages to unregister based on the given tasks and
@@ -290,7 +292,7 @@ mkUnregisterLocal tasks dirtyReason localDumpPkgs sourceMap initialBuildSteps =
     -- will allow us to detect that a package should be unregistered,
     -- as well as all packages directly or transitively depending on
     -- it.
-    trace ("ConstructPlan -> mkUnregisterLocal -> localDumps: " ++ show localDumpPkgs) $ loop Map.empty localDumpPkgs
+    loop Map.empty localDumpPkgs
   where
     loop toUnregister keep
         -- If any new packages were added to the unregister Map, we
@@ -469,10 +471,10 @@ tellExecutablesPackage loc p = do
     -- Determine which components are enabled so we know which ones to copy
     let myComps =
             case Map.lookup (packageName p) cm of
-                Nothing -> assert False Set.empty
+                Nothing                    -> assert False Set.empty
                 Just (PIOnlyInstalled _ _) -> Set.empty
-                Just (PIOnlySource ps) -> goSource ps
-                Just (PIBoth ps _) -> goSource ps
+                Just (PIOnlySource ps)     -> goSource ps
+                Just (PIBoth ps _)         -> goSource ps
 
         goSource (PSFiles lp _)
             | lpWanted lp = exeComponents (lpComponents lp)
@@ -493,9 +495,6 @@ installPackage :: Bool -- ^ is this being used by a dependency?
                -> Maybe Installed
                -> M (Either ConstructPlanException AddDepRes)
 installPackage treatAsDep name ps minstalled = do
-    ---- DEBUG ------------------------------------------------------------
---    logInfo $ T.pack $ "\n\n installPackage -> packagename: " ++ show name
-    -----------------------------------------------------------------------
     ctx <- ask
     case ps of
         PSIndex _ flags ghcOptions pkgLoc -> do
@@ -516,7 +515,7 @@ installPackage treatAsDep name ps minstalled = do
                         res <- addPackageDeps treatAsDep tb
                         let writerFunc w = case res of
                                 Left _ -> mempty
-                                _ -> w
+                                _      -> w
                         return (res, writerFunc)
                     case res of
                         Right deps -> do
@@ -566,7 +565,6 @@ installPackageGivenDeps :: Bool
                            , InstallLocation )
                         -> M AddDepRes
 installPackageGivenDeps isAllInOne ps package minstalled (missing, present, minLoc) = do
-    liftIO $ traceIO $ "\ninstallPackageGivenDeps"
     let name = packageName package
     ctx <- ask
     mRightVersionInstalled <- case (minstalled, Set.null missing) of
@@ -637,13 +635,9 @@ addEllipsis t
 addPackageDeps :: Bool -- ^ is this being used by a dependency?
                -> Package -> M (Either ConstructPlanException (Set PackageIdentifier, Map PackageIdentifier GhcPkgId, InstallLocation))
 addPackageDeps treatAsDep package = do
-    -- DEBUG ----------------------------
-    --logInfo $ T.pack $ "\n\naddPackageDeps -> package: " ++ show package
-    ------------------------------------------------------------------
-
     ctx <- ask
     deps' <- packageDepsWithTools package
-    liftIO $ traceIO $ "\n\naddPackageDeps -> deps " ++ show deps'
+    --liftIO $ traceIO $ "\n\naddPackageDeps -> deps " ++ show deps'
     deps <- forM (Map.toList deps') $ \(depname, (range, depType)) -> do
         eres <- addDep treatAsDep depname
         let getLatestApplicable = do
@@ -722,21 +716,21 @@ addPackageDeps treatAsDep package = do
         val = (First mversion, [(packageIdentifier package, range)])
 
     adrHasLibrary :: AddDepRes -> Bool
-    adrHasLibrary (ADRToInstall task) = taskHasLibrary task
-    adrHasLibrary (ADRFound _ Library{}) = True
+    adrHasLibrary (ADRToInstall task)       = taskHasLibrary task
+    adrHasLibrary (ADRFound _ Library{})    = True
     adrHasLibrary (ADRFound _ Executable{}) = False
 
     taskHasLibrary :: Task -> Bool
     taskHasLibrary task =
       case taskType task of
-        TTFiles lp _ -> packageHasLibrary $ lpPackage lp
+        TTFiles lp _  -> packageHasLibrary $ lpPackage lp
         TTIndex p _ _ -> packageHasLibrary p
 
     packageHasLibrary :: Package -> Bool
     packageHasLibrary p =
       case packageLibraries p of
         HasLibraries _ -> True
-        NoLibraries -> False
+        NoLibraries    -> False
 
 checkDirtiness :: PackageSource
                -> Installed
@@ -761,7 +755,7 @@ checkDirtiness ps installed package present wanted = do
             , configCacheComponents =
                 case ps of
                     PSFiles lp _ -> Set.map renderComponent $ lpComponents lp
-                    PSIndex{} -> Set.empty
+                    PSIndex{}    -> Set.empty
             , configCacheHaddock =
                 shouldHaddockPackage buildOpts wanted (packageName package) ||
                 -- Disabling haddocks when old config had haddocks doesn't make dirty.
@@ -806,16 +800,16 @@ describeConfigDiff config old new
     stripGhcOptions =
         go
       where
-        go [] = []
-        go ("--ghc-option":x:xs) = go' Ghc x xs
-        go ("--ghc-options":x:xs) = go' Ghc x xs
-        go ((T.stripPrefix "--ghc-option=" -> Just x):xs) = go' Ghc x xs
-        go ((T.stripPrefix "--ghc-options=" -> Just x):xs) = go' Ghc x xs
-        go ("--ghcjs-option":x:xs) = go' Ghcjs x xs
-        go ("--ghcjs-options":x:xs) = go' Ghcjs x xs
-        go ((T.stripPrefix "--ghcjs-option=" -> Just x):xs) = go' Ghcjs x xs
+        go []                                                = []
+        go ("--ghc-option":x:xs)                             = go' Ghc x xs
+        go ("--ghc-options":x:xs)                            = go' Ghc x xs
+        go ((T.stripPrefix "--ghc-option=" -> Just x):xs)    = go' Ghc x xs
+        go ((T.stripPrefix "--ghc-options=" -> Just x):xs)   = go' Ghc x xs
+        go ("--ghcjs-option":x:xs)                           = go' Ghcjs x xs
+        go ("--ghcjs-options":x:xs)                          = go' Ghcjs x xs
+        go ((T.stripPrefix "--ghcjs-option=" -> Just x):xs)  = go' Ghcjs x xs
         go ((T.stripPrefix "--ghcjs-options=" -> Just x):xs) = go' Ghcjs x xs
-        go (x:xs) = x : go xs
+        go (x:xs)                                            = x : go xs
 
         go' wc x xs = checkKeepers wc x $ go xs
 
@@ -848,19 +842,19 @@ describeConfigDiff config old new
     newComponents = configCacheComponents new `Set.difference` configCacheComponents old
 
     pkgSrcName (CacheSrcLocal fp) = T.pack fp
-    pkgSrcName CacheSrcUpstream = "upstream source"
+    pkgSrcName CacheSrcUpstream   = "upstream source"
 
 psForceDirty :: PackageSource -> Bool
 psForceDirty (PSFiles lp _) = lpForceDirty lp
-psForceDirty PSIndex{} = False
+psForceDirty PSIndex{}      = False
 
 psDirty :: PackageSource -> Maybe (Set FilePath)
 psDirty (PSFiles lp _) = lpDirtyFiles lp
-psDirty PSIndex{} = Nothing -- files never change in an upstream package
+psDirty PSIndex{}      = Nothing -- files never change in an upstream package
 
 psLocal :: PackageSource -> Bool
 psLocal (PSFiles _ loc) = loc == Local -- FIXME this is probably not the right logic, see configureOptsNoDir. We probably want to check if this appears in packages:
-psLocal PSIndex{} = False
+psLocal PSIndex{}       = False
 
 -- | Get all of the dependencies for a given package, including build
 -- tool dependencies.
@@ -884,13 +878,13 @@ packageDepsWithTools p = do
         mfound <- findExecutable menv $ T.unpack toolName
         case mfound of
             Nothing -> return (Just warning)
-            Just _ -> return Nothing
+            Just _  -> return Nothing
     tell mempty { wWarnings = (map toolWarningText warnings ++) }
     return $ Map.unionsWith
                (\(vr1, dt1) (vr2, dt2) ->
                     ( intersectVersionRanges vr1 vr2
                     , case dt1 of
-                        AsLibrary -> AsLibrary
+                        AsLibrary   -> AsLibrary
                         AsBuildTool -> dt2
                     )
                )
@@ -1040,9 +1034,9 @@ pprintExceptions exceptions stackYaml parentMap wanted =
         go UnknownPackage{} = False
         go (DependencyPlanFailures _ m) =
           all (\(_, _, depErr) -> isMismatch depErr) (M.elems m)
-        isMismatch DependencyMismatch{} = True
+        isMismatch DependencyMismatch{}             = True
         isMismatch Couldn'tResolveItsDependencies{} = True
-        isMismatch _ = False
+        isMismatch _                                = False
 
     pprintException (DependencyCycleDetected pNames) = Just $
         flow "Dependency cycle detected in packages:" <> line <>
@@ -1076,7 +1070,7 @@ pprintExceptions exceptions stackYaml parentMap wanted =
     pprintFlags flags
         | Map.null flags = ""
         | otherwise = parens $ sep $ map pprintFlag $ Map.toList flags
-    pprintFlag (name, True) = "+" <> fromString (show name)
+    pprintFlag (name, True)  = "+" <> fromString (show name)
     pprintFlag (name, False) = "-" <> fromString (show name)
 
     pprintDep (name, (range, mlatestApplicable, badDep)) = case badDep of
@@ -1150,9 +1144,9 @@ getShortestDepsPath (MonoidMap parentsMap) wanted name =
             Just (_, parents) -> map (\(pkgId, _) -> (packageIdentifierName pkgId, extendDepsPath pkgId dp)) parents
 
 data DepsPath = DepsPath
-    { dpLength :: Int -- ^ Length of dpPath
+    { dpLength     :: Int -- ^ Length of dpPath
     , dpNameLength :: Int -- ^ Length of package names combined
-    , dpPath :: [PackageIdentifier] -- ^ A path where the packages later
+    , dpPath       :: [PackageIdentifier] -- ^ A path where the packages later
                                     -- in the list depend on those that
                                     -- come earlier
     }
