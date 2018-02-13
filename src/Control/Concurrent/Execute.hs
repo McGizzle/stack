@@ -1,5 +1,5 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
 {-# LANGUAGE RecordWildCards    #-}
 -- Concurrent execution with dependencies. Types currently hard-coded for needs
 -- of stack, but could be generalized easily.
@@ -12,14 +12,13 @@ module Control.Concurrent.Execute
     , runActions
     ) where
 
-import Debug.Trace
-
-import           Control.Concurrent.STM   (retry)
+import           Control.Concurrent.STM        (retry)
+import           Data.List                     (sortBy)
+import qualified Data.Set                      as Set
 import           Stack.Prelude
-import           Data.List (sortBy)
-import qualified Data.Set                 as Set
 import           Stack.Types.PackageIdentifier
-import qualified Data.Text as Text
+
+import           Debug.Trace
 
 data ActionType
     = ATBuild
@@ -38,23 +37,27 @@ data ActionType
 data ActionId = ActionId !PackageIdentifier !ActionType
     deriving (Show, Eq, Ord)
 data Action = Action
-    { actionId :: !ActionId
-    , actionDeps :: !(Set ActionId)
-    , actionDo :: !(ActionContext -> IO ())
+    { actionId          :: !ActionId
+    , actionDeps        :: !(Set ActionId)
+    , actionDo          :: !(ActionContext -> IO ())
     , actionConcurrency :: !Concurrency
     }
+instance Show Action where
+        show actionDo          = "Action Do!!!!!"
+
 
 data Concurrency = ConcurrencyAllowed | ConcurrencyDisallowed
-    deriving (Eq)
+    deriving (Eq,Show)
 
 data ActionContext = ActionContext
-    { acRemaining :: !(Set ActionId)
+    { acRemaining   :: !(Set ActionId)
     -- ^ Does not include the current action
-    , acDownstream :: [Action]
+    , acDownstream  :: [Action]
     -- ^ Actions which depend on the current action
     , acConcurrency :: !Concurrency
     -- ^ Whether this action may be run concurrently with others
     }
+    deriving(Show)
 
 data ExecuteState = ExecuteState
     { esActions    :: TVar [Action]
@@ -72,6 +75,7 @@ instance Exception ExecuteException
 instance Show ExecuteException where
     show InconsistentDependencies =
         "Inconsistent dependencies were discovered while executing your build plan. This should never happen, please report it as a bug to the stack team."
+
 
 runActions :: Int -- ^ threads
            -> Bool -- ^ keep going after one task has failed
@@ -101,13 +105,16 @@ sortActions = sortBy (compareConcurrency `on` actionConcurrency)
     -- this.
     compareConcurrency ConcurrencyAllowed ConcurrencyDisallowed = LT
     compareConcurrency ConcurrencyDisallowed ConcurrencyAllowed = GT
-    compareConcurrency _ _ = EQ
+    compareConcurrency _ _                                      = EQ
+
+runActionDist :: Action -> IO ()
+runActionDist action = return ()
+
 
 runActions' :: ExecuteState -> IO ()
 runActions' ExecuteState {..} = do
-    actions <- atomically $ readTVar esActions
   ------DEBUG -------------------------------------------
-  --  traceIO $ "\n\nCOntrol.Concurrent -> runAction' -> actionId: "++ show (actionId <$> actions) ++"\n\n" 
+          --
   ---------------------------------------------------------
     loop
   where
@@ -122,9 +129,10 @@ runActions' ExecuteState {..} = do
             then return $ return ()
             else inner as
     loop = join $ atomically $ breakOnErrs $ withActions $ \as ->
+      -- break (> 3) [1,2,3,4,5] == ([1,2,3],[4,5])
         case break (Set.null . actionDeps) as of
             (_, []) -> do
-                inAction <- readTVar esInAction
+                inAction <- readTVar esInAction --trace ("n\nempty case\n") $
                 if Set.null inAction
                     then do
                         unless esKeepGoing $
@@ -132,9 +140,9 @@ runActions' ExecuteState {..} = do
                         return $ return ()
                     else retry
             (xs, action:ys) -> do
-                inAction <- readTVar esInAction
+                inAction <- readTVar esInAction --trace ("\naction case: "++ show action ++"\n") $
                 case actionConcurrency action of
-                  ConcurrencyAllowed -> return ()
+                  ConcurrencyAllowed    -> return ()
                   ConcurrencyDisallowed -> unless (Set.null inAction) retry
                 let as' = xs ++ ys
                     remaining = Set.union
