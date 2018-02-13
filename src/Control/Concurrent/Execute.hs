@@ -119,38 +119,39 @@ runActions' ExecuteState {..} = do
     loop
   where
     breakOnErrs inner = do
-        errs <- readTVar esExceptions
+        errs <- atomically $ readTVar esExceptions
         if null errs || esKeepGoing
             then inner
-            else return $ return ()
+            else return ()
+    withActions :: ([Action] -> IO ()) -> IO ()
     withActions inner = do
-        as <- readTVar esActions
+        as <- atomically $ readTVar esActions
         if null as
-            then return $ return ()
+            then return ()
             else inner as
-    loop = join $ atomically $ breakOnErrs $ withActions $ \as ->
+    loop = breakOnErrs $ withActions $ \as ->
       -- break (> 3) [1,2,3,4,5] == ([1,2,3],[4,5])
         case break (Set.null . actionDeps) as of
             (_, []) -> do
-                inAction <- readTVar esInAction --trace ("n\nempty case\n") $
+                inAction <- atomically $ readTVar esInAction --trace ("n\nempty case\n") $
                 if Set.null inAction
                     then do
                         unless esKeepGoing $
-                            modifyTVar esExceptions (toException InconsistentDependencies:)
-                        return $ return ()
-                    else retry
+                              atomically $ modifyTVar esExceptions (toException InconsistentDependencies:)
+                        return ()
+                    else loop
             (xs, action:ys) -> do
-                inAction <- readTVar esInAction --trace ("\naction case: "++ show action ++"\n") $
+                inAction <- atomically $ readTVar esInAction --trace ("\naction case: "++ show action ++"\n") $
                 case actionConcurrency action of
                   ConcurrencyAllowed    -> return ()
-                  ConcurrencyDisallowed -> unless (Set.null inAction) retry
+                  ConcurrencyDisallowed -> unless (Set.null inAction) loop
                 let as' = xs ++ ys
                     remaining = Set.union
                         (Set.fromList $ map actionId as')
                         inAction
-                writeTVar esActions as'
-                modifyTVar esInAction (Set.insert $ actionId action)
-                return $ mask $ \restore -> do
+                atomically $ writeTVar esActions as'
+                atomically $ modifyTVar esInAction (Set.insert $ actionId action)
+                mask $ \restore -> do
                     eres <- try $ restore $ actionDo action ActionContext
                         { acRemaining = remaining
                         , acDownstream = downstreamActions (actionId action) as'
