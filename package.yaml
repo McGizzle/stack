@@ -116,6 +116,9 @@ dependencies:
 - yaml
 - zip-archive
 - zlib
+- distributed-process
+- network-transport-tcp 
+- distributed-process-simplelocalnet
 when:
 - condition: os(windows)
   then:
@@ -137,6 +140,8 @@ library:
   - -fwarn-identities
   exposed-modules:
   - Control.Concurrent.Execute
+  - Control.Concurrent.Types
+  - Control.Concurrent.Distributed
   - Data.Aeson.Extended
   - Data.Attoparsec.Args
   - Data.Attoparsec.Combinators
@@ -273,6 +278,12 @@ library:
     else:
       source-dirs: src/unix/
 executables:
+  worker: 
+    main: Main.hs
+    source-dirs: src/worker
+    dependencies: 
+    - stack
+
   stack:
     main: Main.hs
     source-dirs: src/main

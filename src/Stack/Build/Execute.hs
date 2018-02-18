@@ -656,7 +656,8 @@ executePlan' installedMap0 targets plan ee@ExecuteEnv {..} = do
             fromMaybe (not (M.null (planFinals plan))) (boptsKeepGoing eeBuildOpts)
     terminal <- view terminalL
     ----------------- This here is where the magic happens ---------------------------------
-    errs <- liftIO $ runActions threads keepGoing actions $ \doneVar actionsVar -> do
+    lock <- liftIO $ newMVar ()
+    errs <- liftIO $ runActions threads keepGoing actions lock $ \doneVar actionsVar -> do
     ----------------------------------------------------------------------------------------
         let total = length actions
             loop prev

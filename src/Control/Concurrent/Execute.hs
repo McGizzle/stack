@@ -1,6 +1,9 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE NoImplicitPrelude  #-}
-{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
+
 -- Concurrent execution with dependencies. Types currently hard-coded for needs
 -- of stack, but could be generalized easily.
 module Control.Concurrent.Execute
@@ -12,77 +15,28 @@ module Control.Concurrent.Execute
     , runActions
     ) where
 
-import           Control.Concurrent.STM        (retry)
-import           Data.List                     (sortBy)
-import qualified Data.Set                      as Set
+import           Control.Concurrent.Distributed
+import           Control.Concurrent.Types
+import System.IO
+
+
+import           Control.Concurrent
+import           Control.Concurrent.MVar
+import           Control.Concurrent.STM              (retry)
+import           Data.List                           (sortBy)
+import qualified Data.Set                            as Set
 import           Stack.Prelude
 import           Stack.Types.PackageIdentifier
 
 import           Debug.Trace
-
-data ActionType
-    = ATBuild
-      -- ^ Action for building a package's library and executables. If
-      -- 'taskAllInOne' is 'True', then this will also build benchmarks
-      -- and tests. It is 'False' when then library's benchmarks or
-      -- test-suites have cyclic dependencies.
-    | ATBuildFinal
-      -- ^ Task for building the package's benchmarks and test-suites.
-      -- Requires that the library was already built.
-    | ATRunTests
-      -- ^ Task for running the package's test-suites.
-    | ATRunBenchmarks
-      -- ^ Task for running the package's benchmarks.
-    deriving (Show, Eq, Ord)
-data ActionId = ActionId !PackageIdentifier !ActionType
-    deriving (Show, Eq, Ord)
-data Action = Action
-    { actionId          :: !ActionId
-    , actionDeps        :: !(Set ActionId)
-    , actionDo          :: !(ActionContext -> IO ())
-    , actionConcurrency :: !Concurrency
-    }
-instance Show Action where
-        show actionDo          = "Action Do!!!!!"
-
-
-data Concurrency = ConcurrencyAllowed | ConcurrencyDisallowed
-    deriving (Eq,Show)
-
-data ActionContext = ActionContext
-    { acRemaining   :: !(Set ActionId)
-    -- ^ Does not include the current action
-    , acDownstream  :: [Action]
-    -- ^ Actions which depend on the current action
-    , acConcurrency :: !Concurrency
-    -- ^ Whether this action may be run concurrently with others
-    }
-    deriving(Show)
-
-data ExecuteState = ExecuteState
-    { esActions    :: TVar [Action]
-    , esExceptions :: TVar [SomeException]
-    , esInAction   :: TVar (Set ActionId)
-    , esCompleted  :: TVar Int
-    , esKeepGoing  :: Bool
-    }
-
-data ExecuteException
-    = InconsistentDependencies
-    deriving Typeable
-instance Exception ExecuteException
-
-instance Show ExecuteException where
-    show InconsistentDependencies =
-        "Inconsistent dependencies were discovered while executing your build plan. This should never happen, please report it as a bug to the stack team."
-
-
+---------------------------------------
 runActions :: Int -- ^ threads
            -> Bool -- ^ keep going after one task has failed
            -> [Action]
+           -> MVar ()
            -> (TVar Int -> TVar (Set ActionId) -> IO ()) -- ^ progress updated
            -> IO [SomeException]
-runActions threads keepGoing actions0 withProgress = do
+runActions threads keepGoing actions0 lock withProgress = do
     es <- ExecuteState
         <$> newTVarIO (sortActions actions0)
         <*> newTVarIO []
@@ -91,8 +45,8 @@ runActions threads keepGoing actions0 withProgress = do
         <*> pure keepGoing
     _ <- async $ withProgress (esCompleted es) (esInAction es)
     if threads <= 1
-        then runActions' es
-        else replicateConcurrently_ threads $ runActions' es
+       then runActions' es lock
+        else replicateConcurrently_ threads $ runActions' es lock
     readTVarIO $ esExceptions es
 
 -- | Sort actions such that those that can't be run concurrently are at
@@ -107,15 +61,12 @@ sortActions = sortBy (compareConcurrency `on` actionConcurrency)
     compareConcurrency ConcurrencyDisallowed ConcurrencyAllowed = GT
     compareConcurrency _ _                                      = EQ
 
-runActionDist :: Action -> IO ()
-runActionDist action = return ()
-
-
-runActions' :: ExecuteState -> IO ()
-runActions' ExecuteState {..} = do
-  ------DEBUG -------------------------------------------
-          --
-  ---------------------------------------------------------
+runActions' :: ExecuteState -> MVar () -> IO ()
+runActions' ExecuteState {..} lock = do
+    Control.Concurrent.MVar.takeMVar lock
+    print "runActions' called"
+    runActionDist
+    Control.Concurrent.MVar.putMVar lock ()
     loop
   where
     breakOnErrs inner = do
@@ -133,6 +84,7 @@ runActions' ExecuteState {..} = do
       -- break (> 3) [1,2,3,4,5] == ([1,2,3],[4,5])
         case break (Set.null . actionDeps) as of
             (_, []) -> do
+                traceIO "\nEmpty case\n"
                 inAction <- atomically $ readTVar esInAction --trace ("n\nempty case\n") $
                 if Set.null inAction
                     then do
@@ -141,7 +93,7 @@ runActions' ExecuteState {..} = do
                         return ()
                     else loop
             (xs, action:ys) -> do
-                inAction <- atomically $ readTVar esInAction --trace ("\naction case: "++ show action ++"\n") $
+                inAction <- atomically $ readTVar esInAction
                 case actionConcurrency action of
                   ConcurrencyAllowed    -> return ()
                   ConcurrencyDisallowed -> unless (Set.null inAction) loop
@@ -151,21 +103,26 @@ runActions' ExecuteState {..} = do
                         inAction
                 atomically $ writeTVar esActions as'
                 atomically $ modifyTVar esInAction (Set.insert $ actionId action)
-                mask $ \restore -> do
-                    eres <- try $ restore $ actionDo action ActionContext
-                        { acRemaining = remaining
-                        , acDownstream = downstreamActions (actionId action) as'
-                        , acConcurrency = actionConcurrency action
-                        }
-                    atomically $ do
-                        modifyTVar esInAction (Set.delete $ actionId action)
-                        modifyTVar esCompleted (+1)
-                        case eres of
-                            Left err -> modifyTVar esExceptions (err:)
-                            Right () ->
-                                let dropDep a = a { actionDeps = Set.delete (actionId action) $ actionDeps a }
-                                 in modifyTVar esActions $ map dropDep
-                    restore loop
+                mask' as' remaining
+
+               where
+                       mask' :: [Action] -> Set ActionId -> IO ()
+                       mask' as' remaining = mask $ \restore -> do
+                        let context = ActionContext remaining (downstreamActions (actionId action) as') (actionConcurrency action)
+                        eres <- try $ restore $ actionDo action context
+                        atomically $ do
+                          modifyTVar esInAction (Set.delete $ actionId action)
+                          modifyTVar esCompleted (+1)
+                          case eres of
+                              Left err -> modifyTVar esExceptions (err:)
+                              Right () ->
+                                  let dropDep a = a { actionDeps = Set.delete (actionId action) $ actionDeps a }
+                                   in modifyTVar esActions $ map dropDep
+                        restore loop
 
 downstreamActions :: ActionId -> [Action] -> [Action]
 downstreamActions aid = filter (\a -> aid `Set.member` actionDeps a)
+
+
+
+

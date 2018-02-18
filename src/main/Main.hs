@@ -15,6 +15,9 @@
 
 module Main (main) where
 
+
+import Control.Concurrent.Distributed
+
 #ifndef HIDE_DEP_VERSIONS
 import qualified Build_stack
 #endif
