@@ -109,7 +109,8 @@ runActions' ExecuteState {..} lock = do
                        mask' :: [Action] -> Set ActionId -> IO ()
                        mask' as' remaining = mask $ \restore -> do
                         let context = ActionContext remaining (downstreamActions (actionId action) as') (actionConcurrency action)
-                        eres <- try $ restore $ actionDo action context
+                        --eres <- try $ restore $ actionDo action context
+                        eres <- runActionDist action context
                         atomically $ do
                           modifyTVar esInAction (Set.delete $ actionId action)
                           modifyTVar esCompleted (+1)

@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric,DeriveAnyClass #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
@@ -42,8 +42,10 @@ import           Data.Hashable (Hashable (..))
 import           Data.List
 import qualified Data.Set as Set
 import qualified Data.Text as T
+
 import           Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as V
+import Data.Vector.Binary 
 import           Distribution.Text (disp)
 import qualified Distribution.Version as Cabal
 import           Language.Haskell.TH
@@ -51,6 +53,8 @@ import           Language.Haskell.TH.Syntax
 import qualified Paths_stack as Meta
 import           Text.PrettyPrint (render)
 
+import Data.Binary
+import GHC.Generics (Generic)
 -- | A parse fail.
 newtype VersionParseFail =
   VersionParseFail Text
@@ -64,8 +68,11 @@ data UpgradeTo = Specific Version | Latest deriving (Show)
 
 -- | A package version.
 newtype Version =
-  Version {unVersion :: Vector Word}
+        Version {unVersion :: Vector Word}
   deriving (Eq,Ord,Typeable,Data,Generic,Store,NFData)
+
+instance Binary Version where
+
 
 instance Hashable Version where
   hashWithSalt i = hashWithSalt i . V.toList . unVersion

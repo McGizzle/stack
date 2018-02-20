@@ -53,6 +53,8 @@ import           Stack.StaticBytes
 import           Stack.Types.PackageName
 import           Stack.Types.Version
 
+import Data.Binary
+import GHC.Generics (Generic)
 -- | A parse fail.
 data PackageIdentifierParseFail
   = PackageIdentifierParseFail Text
@@ -70,6 +72,8 @@ data PackageIdentifier = PackageIdentifier
     -- | Get the version part of the identifier.
   , packageIdentifierVersion :: !Version
   } deriving (Eq,Ord,Generic,Data,Typeable)
+
+instance Binary PackageIdentifier
 
 instance NFData PackageIdentifier where
   rnf (PackageIdentifier !p !v) =

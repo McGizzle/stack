@@ -8,4 +8,4 @@ main = do
         args <- getArgs
         case args of
           ["worker",host,port] -> startWorker host port
-          ["manager",host,port] -> startManager host port
+          _                    -> putStrLn "Bad args"

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Control.Concurrent.Types where
 
 import           Control.Concurrent.STM
@@ -5,7 +6,8 @@ import           Control.Exception
 import qualified Data.Set                      as Set
 import           Stack.Prelude
 import           Stack.Types.PackageIdentifier
-
+import Data.Binary
+import GHC.Generics (Generic)
 
 
 data ActionType
@@ -21,21 +23,28 @@ data ActionType
       -- ^ Task for running the package's test-suites.
     | ATRunBenchmarks
       -- ^ Task for running the package's benchmarks.
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Typeable, Generic)
+
+instance Binary ActionType
+
 data ActionId = ActionId !PackageIdentifier !ActionType
-    deriving (Show, Eq, Ord)
+        deriving (Show, Eq, Ord, Generic)
+
 data Action = Action
     { actionId          :: !ActionId
     , actionDeps        :: !(Set ActionId)
-    , actionDo          :: !(ActionContext -> IO ())
+    , actionDo          :: !(ActionContext -> IO ()) 
     , actionConcurrency :: !Concurrency
     }
+    deriving(Generic)
+
 instance Show Action where
         show (Action a b c d) = "actionId: " ++ show a ++ " actionDeps:" ++ show b ++ " Action Do!!!!!" ++ " Concurrency" ++ show d
 
 
 data Concurrency = ConcurrencyAllowed | ConcurrencyDisallowed
-    deriving (Eq,Show)
+    deriving (Eq,Show,Generic)
+instance Binary Concurrency
 
 data ActionContext = ActionContext
     { acRemaining   :: !(Set ActionId)
@@ -45,7 +54,7 @@ data ActionContext = ActionContext
     , acConcurrency :: !Concurrency
     -- ^ Whether this action may be run concurrently with others
     }
-    deriving(Show)
+    deriving(Show,Generic)
 
 data ExecuteState = ExecuteState
     { esActions    :: TVar [Action]

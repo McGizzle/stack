@@ -35,7 +35,8 @@ import           Language.Haskell.TH
 import           Language.Haskell.TH.Syntax
 import qualified Options.Applicative as O
 import           Path
-
+import Data.Binary
+import GHC.Generics (Generic)
 -- | A parse fail.
 data PackageNameParseFail
   = PackageNameParseFail Text
@@ -52,6 +53,8 @@ instance Show PackageNameParseFail where
 newtype PackageName =
   PackageName Text
   deriving (Eq,Ord,Typeable,Data,Generic,Hashable,NFData,Store,ToJSON,ToJSONKey)
+
+instance Binary PackageName
 
 instance Lift PackageName where
   lift (PackageName n) =

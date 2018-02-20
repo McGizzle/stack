@@ -42,6 +42,7 @@ dependencies:
 - attoparsec
 - base >=4.9 && < 5
 - base64-bytestring
+- binary
 - blaze-builder
 - bytestring
 - clock
@@ -113,6 +114,7 @@ dependencies:
 - unliftio
 - unordered-containers
 - vector
+- vector-binary-instances
 - yaml
 - zip-archive
 - zlib

@@ -20,6 +20,7 @@ import           Network.Transport.TCP                              (createTrans
                                                                      defaultTCPParameters)
 
 import           Control.Concurrent.Types
+import Data.Binary
 
 data FakeException = FakeException
         deriving(Show)
@@ -39,9 +40,10 @@ worker manager = do
         where
             run manager = receiveWait[match end, match work]
               where 
-                work n = do
-                  plog $ "Message: " ++ n
-                  send manager "Hello to you too!"
+                work :: String -> Process ()
+                work ad = do
+                  plog "Functions received! "
+                  send manager "I got the functions!"
                   run manager
                 end () = do
                   plog "Bye"
@@ -53,10 +55,10 @@ remotable['worker]
 rtable :: RemoteTable
 rtable = Control.Concurrent.Distributed.__remoteTable initRemoteTable
 
-runActionDist :: IO ()
-runActionDist = do
+runActionDist :: Action -> ActionContext -> IO ()
+runActionDist action context = do
         print "Distribution code in action"
-        startManager "127.0.0.1" "5600"
+        startManager "127.0.0.1" "5600" action context
 
 startWorker :: String -> String -> IO ()
 startWorker host port = do
@@ -64,22 +66,22 @@ startWorker host port = do
         backend <- initializeBackend host port rtable 
         startSlave backend
 
-startManager :: String -> String -> IO ()
-startManager host port = do
+startManager :: String -> String -> Action -> ActionContext -> IO ()
+startManager host port action context = do
         print "Loading Manager"
         backend <- initializeBackend host port rtable
         startMaster backend $ \ nids -> do
                 me <- getSelfPid
+                let f = actionDo action
                 forM_ nids $ \ nid -> spawn nid $ $(mkClosure 'worker) me
                 pid <- expect
-                send pid "Hello Pid!"
+                send pid (encode $ actionDo action)
                 resp <- expect
                 liftIO . putStrLn $ "resp: " ++ resp
                 send pid ()
                 kill :: String <- expect 
                 terminateAllSlaves backend        
         return ()
-
 
 ----------------------------------------------------------------------------------
 
