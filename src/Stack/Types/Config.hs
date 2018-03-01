@@ -1,26 +1,26 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DefaultSignatures          #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE MultiWayIf                 #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 
 -- | The Config type.
 
@@ -168,43 +168,60 @@ module Stack.Types.Config
   ,to
   ) where
 
-import           Control.Monad.Writer (tell)
-import           Crypto.Hash (hashWith, SHA1(..))
-import           Stack.Prelude
-import           Data.Aeson.Extended
-                 (ToJSON, toJSON, FromJSON, FromJSONKey (..), parseJSON, withText, object,
-                  (.=), (..:), (..:?), (..!=), Value(Bool, String),
-                  withObjectWarnings, WarningParser, Object, jsonSubWarnings,
-                  jsonSubWarningsT, jsonSubWarningsTT, WithJSONWarnings(..), noJSONWarnings,
-                  FromJSONKeyFunction (FromJSONKeyTextParser))
-import           Data.Attoparsec.Args (parseArgs, EscapingMode (Escaping))
-import qualified Data.ByteArray.Encoding as Mem (convertToBase, Base(Base16))
-import qualified Data.ByteString.Char8 as S8
-import           Data.List (stripPrefix)
-import           Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
-import qualified Data.Map as Map
-import qualified Data.Map.Strict as M
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
-import           Data.Yaml (ParseException)
-import qualified Data.Yaml as Yaml
-import           Distribution.PackageDescription (GenericPackageDescription)
-import qualified Distribution.PackageDescription as C
-import           Distribution.System (Platform)
+import           Control.Monad.Writer                   (tell)
+import           Crypto.Hash                            (SHA1 (..), hashWith)
+import           Data.Aeson.Extended                    (FromJSON,
+                                                         FromJSONKey (..),
+                                                         FromJSONKeyFunction (FromJSONKeyTextParser),
+                                                         Object, ToJSON,
+                                                         Value (Bool, String),
+                                                         WarningParser,
+                                                         WithJSONWarnings (..),
+                                                         jsonSubWarnings,
+                                                         jsonSubWarningsT,
+                                                         jsonSubWarningsTT,
+                                                         noJSONWarnings, object,
+                                                         parseJSON, toJSON,
+                                                         withObjectWarnings,
+                                                         withText, (..!=),
+                                                         (..:), (..:?), (.=))
+import           Data.Attoparsec.Args                   (EscapingMode (Escaping),
+                                                         parseArgs)
+import qualified Data.ByteArray.Encoding                as Mem (Base (Base16),
+                                                                convertToBase)
+import qualified Data.ByteString.Char8                  as S8
+import           Data.List                              (stripPrefix)
+import           Data.List.NonEmpty                     (NonEmpty)
+import qualified Data.List.NonEmpty                     as NonEmpty
+import qualified Data.Map                               as Map
+import qualified Data.Map.Strict                        as M
+import qualified Data.Set                               as Set
+import qualified Data.Text                              as T
+import           Data.Text.Encoding                     (encodeUtf8)
+import           Data.Yaml                              (ParseException)
+import qualified Data.Yaml                              as Yaml
+import           Distribution.PackageDescription        (GenericPackageDescription)
+import qualified Distribution.PackageDescription        as C
+import           Distribution.System                    (Platform)
 import qualified Distribution.Text
 import qualified Distribution.Types.UnqualComponentName as C
-import           Distribution.Version (anyVersion, mkVersion')
-import           Generics.Deriving.Monoid (memptydefault, mappenddefault)
-import           Lens.Micro (Lens', lens, _1, _2, to)
-import           Options.Applicative (ReadM)
-import qualified Options.Applicative as OA
-import qualified Options.Applicative.Types as OA
+import           Distribution.Version                   (anyVersion, mkVersion')
+import           Generics.Deriving.Monoid               (mappenddefault,
+                                                         memptydefault)
+import           Lens.Micro                             (Lens', lens, to, _1,
+                                                         _2)
+import           Options.Applicative                    (ReadM)
+import qualified Options.Applicative                    as OA
+import qualified Options.Applicative.Types              as OA
 import           Path
-import qualified Paths_stack as Meta
+import qualified Paths_stack                            as Meta
+import           RIO.Process                            (EnvOverride,
+                                                         HasEnvOverride (..),
+                                                         findExecutable)
 import           Stack.Constants
-import           Stack.PackageIndex (HasCabalLoader (..), CabalLoader (clStackRoot))
+import           Stack.PackageIndex                     (CabalLoader (clStackRoot),
+                                                         HasCabalLoader (..))
+import           Stack.Prelude
 import           Stack.Types.BuildPlan
 import           Stack.Types.Compiler
 import           Stack.Types.CompilerBuild
@@ -221,12 +238,14 @@ import           Stack.Types.Runner
 import           Stack.Types.TemplateName
 import           Stack.Types.Urls
 import           Stack.Types.Version
-import qualified System.FilePath as FilePath
-import           System.PosixCompat.Types (UserID, GroupID, FileMode)
-import           RIO.Process (EnvOverride, HasEnvOverride (..), findExecutable)
+import qualified System.FilePath                        as FilePath
+import           System.PosixCompat.Types               (FileMode, GroupID,
+                                                         UserID)
 
 -- Re-exports
-import           Stack.Types.Config.Build as X
+import           Stack.Types.Config.Build               as X
+
+import           Data.Binary
 
 -- | The top-level Stackage configuration.
 data Config =
@@ -240,7 +259,7 @@ data Config =
          -- ^ Docker configuration
          ,configNix                 :: !NixOpts
          -- ^ Execution environment (e.g nix-shell) configuration
-         ,configEnvOverrideSettings :: !(EnvSettings -> IO EnvOverride)
+    --     ,configEnvOverrideSettings :: !(EnvSettings -> IO EnvOverride)
          -- ^ Environment variables to be passed to external tools
          ,configLocalProgramsBase   :: !(Path Abs Dir)
          -- ^ Non-platform-specific path containing local installations
@@ -335,33 +354,38 @@ data Config =
          -- ^ Should we save Hackage credentials to a file?
          ,configRunner              :: !Runner
          ,configCabalLoader         :: !CabalLoader
-         }
+         } deriving(Generic, Typeable)
+instance Binary Config
 
 data HpackExecutable
     = HpackBundled
     | HpackCommand String
-    deriving (Show, Read, Eq, Ord)
+    deriving (Show, Read, Eq, Ord, Generic, Typeable)
+instance Binary HpackExecutable
 
 -- | Which packages do ghc-options on the command line apply to?
 data ApplyGhcOptions = AGOTargets -- ^ all local targets
                      | AGOLocals -- ^ all local packages, even non-targets
                      | AGOEverything -- ^ every package
-  deriving (Show, Read, Eq, Ord, Enum, Bounded)
+  deriving (Show, Read, Eq, Ord, Enum, Bounded, Generic, Typeable)
+
+instance Binary ApplyGhcOptions
 
 instance FromJSON ApplyGhcOptions where
     parseJSON = withText "ApplyGhcOptions" $ \t ->
         case t of
-            "targets" -> return AGOTargets
-            "locals" -> return AGOLocals
+            "targets"    -> return AGOTargets
+            "locals"     -> return AGOLocals
             "everything" -> return AGOEverything
-            _ -> fail $ "Invalid ApplyGhcOptions: " ++ show t
+            _            -> fail $ "Invalid ApplyGhcOptions: " ++ show t
 
 -- | Which build log files to dump
 data DumpLogs
   = DumpNoLogs -- ^ don't dump any logfiles
   | DumpWarningLogs -- ^ dump logfiles containing warnings
   | DumpAllLogs -- ^ dump all logfiles
-  deriving (Show, Read, Eq, Ord, Enum, Bounded)
+  deriving (Show, Read, Eq, Ord, Enum, Bounded, Generic, Typeable)
+instance Binary DumpLogs
 
 instance FromJSON DumpLogs where
   parseJSON (Bool True) = return DumpAllLogs
@@ -378,22 +402,22 @@ instance FromJSON DumpLogs where
 
 -- | Controls which version of the environment is used
 data EnvSettings = EnvSettings
-    { esIncludeLocals :: !Bool
+    { esIncludeLocals         :: !Bool
     -- ^ include local project bin directory, GHC_PACKAGE_PATH, etc
     , esIncludeGhcPackagePath :: !Bool
     -- ^ include the GHC_PACKAGE_PATH variable
-    , esStackExe :: !Bool
+    , esStackExe              :: !Bool
     -- ^ set the STACK_EXE variable to the current executable name
-    , esLocaleUtf8 :: !Bool
+    , esLocaleUtf8            :: !Bool
     -- ^ set the locale to C.UTF-8
-    , esKeepGhcRts :: !Bool
+    , esKeepGhcRts            :: !Bool
     -- ^ if True, keep GHCRTS variable in environment
     }
     deriving (Show, Eq, Ord)
 
 data ExecOpts = ExecOpts
-    { eoCmd :: !SpecialExecCmd
-    , eoArgs :: ![String]
+    { eoCmd   :: !SpecialExecCmd
+    , eoArgs  :: ![String]
     , eoExtra :: !ExecOptsExtra
     } deriving (Show)
 
@@ -407,31 +431,31 @@ data ExecOptsExtra
     = ExecOptsPlain
     | ExecOptsEmbellished
         { eoEnvSettings :: !EnvSettings
-        , eoPackages :: ![String]
-        , eoRtsOptions :: ![String]
-        , eoCwd :: !(Maybe FilePath)
+        , eoPackages    :: ![String]
+        , eoRtsOptions  :: ![String]
+        , eoCwd         :: !(Maybe FilePath)
         }
     deriving (Show)
 
 data EvalOpts = EvalOpts
-    { evalArg :: !String
+    { evalArg   :: !String
     , evalExtra :: !ExecOptsExtra
     } deriving (Show)
 
 -- | Parsed global command-line options.
 data GlobalOpts = GlobalOpts
-    { globalReExecVersion :: !(Maybe String) -- ^ Expected re-exec in container version
+    { globalReExecVersion    :: !(Maybe String) -- ^ Expected re-exec in container version
     , globalDockerEntrypoint :: !(Maybe DockerEntrypoint)
       -- ^ Data used when stack is acting as a Docker entrypoint (internal use only)
-    , globalLogLevel     :: !LogLevel -- ^ Log level
-    , globalTimeInLog    :: !Bool -- ^ Whether to include timings in logs.
-    , globalConfigMonoid :: !ConfigMonoid -- ^ Config monoid, for passing into 'loadConfig'
-    , globalResolver     :: !(Maybe AbstractResolver) -- ^ Resolver override
-    , globalCompiler     :: !(Maybe (CompilerVersion 'CVWanted)) -- ^ Compiler override
-    , globalTerminal     :: !Bool -- ^ We're in a terminal?
-    , globalColorWhen    :: !ColorWhen -- ^ When to use ansi terminal colors
-    , globalTermWidth    :: !(Maybe Int) -- ^ Terminal width override
-    , globalStackYaml    :: !(StackYamlLoc FilePath) -- ^ Override project stack.yaml
+    , globalLogLevel         :: !LogLevel -- ^ Log level
+    , globalTimeInLog        :: !Bool -- ^ Whether to include timings in logs.
+    , globalConfigMonoid     :: !ConfigMonoid -- ^ Config monoid, for passing into 'loadConfig'
+    , globalResolver         :: !(Maybe AbstractResolver) -- ^ Resolver override
+    , globalCompiler         :: !(Maybe (CompilerVersion 'CVWanted)) -- ^ Compiler override
+    , globalTerminal         :: !Bool -- ^ We're in a terminal?
+    , globalColorWhen        :: !ColorWhen -- ^ When to use ansi terminal colors
+    , globalTermWidth        :: !(Maybe Int) -- ^ Terminal width override
+    , globalStackYaml        :: !(StackYamlLoc FilePath) -- ^ Override project stack.yaml
     } deriving (Show)
 
 data StackYamlLoc filepath
@@ -444,18 +468,18 @@ data StackYamlLoc filepath
 
 -- | Parsed global command-line options monoid.
 data GlobalOptsMonoid = GlobalOptsMonoid
-    { globalMonoidReExecVersion :: !(First String) -- ^ Expected re-exec in container version
+    { globalMonoidReExecVersion    :: !(First String) -- ^ Expected re-exec in container version
     , globalMonoidDockerEntrypoint :: !(First DockerEntrypoint)
       -- ^ Data used when stack is acting as a Docker entrypoint (internal use only)
-    , globalMonoidLogLevel     :: !(First LogLevel) -- ^ Log level
-    , globalMonoidTimeInLog    :: !(First Bool) -- ^ Whether to include timings in logs.
-    , globalMonoidConfigMonoid :: !ConfigMonoid -- ^ Config monoid, for passing into 'loadConfig'
-    , globalMonoidResolver     :: !(First AbstractResolver) -- ^ Resolver override
-    , globalMonoidCompiler     :: !(First (CompilerVersion 'CVWanted)) -- ^ Compiler override
-    , globalMonoidTerminal     :: !(First Bool) -- ^ We're in a terminal?
-    , globalMonoidColorWhen    :: !(First ColorWhen) -- ^ When to use ansi colors
-    , globalMonoidTermWidth    :: !(First Int) -- ^ Terminal width override
-    , globalMonoidStackYaml    :: !(First FilePath) -- ^ Override project stack.yaml
+    , globalMonoidLogLevel         :: !(First LogLevel) -- ^ Log level
+    , globalMonoidTimeInLog        :: !(First Bool) -- ^ Whether to include timings in logs.
+    , globalMonoidConfigMonoid     :: !ConfigMonoid -- ^ Config monoid, for passing into 'loadConfig'
+    , globalMonoidResolver         :: !(First AbstractResolver) -- ^ Resolver override
+    , globalMonoidCompiler         :: !(First (CompilerVersion 'CVWanted)) -- ^ Compiler override
+    , globalMonoidTerminal         :: !(First Bool) -- ^ We're in a terminal?
+    , globalMonoidColorWhen        :: !(First ColorWhen) -- ^ When to use ansi colors
+    , globalMonoidTermWidth        :: !(First Int) -- ^ Terminal width override
+    , globalMonoidStackYaml        :: !(First FilePath) -- ^ Override project stack.yaml
     } deriving (Show, Generic)
 
 instance Monoid GlobalOptsMonoid where
@@ -481,21 +505,21 @@ readColorWhen = do
 --
 -- These are the components which know nothing about local configuration.
 data BuildConfig = BuildConfig
-    { bcConfig     :: !Config
-    , bcSnapshotDef :: !SnapshotDef
+    { bcConfig          :: !Config
+    , bcSnapshotDef     :: !SnapshotDef
       -- ^ Build plan wanted for this build
-    , bcGHCVariant :: !GHCVariant
+    , bcGHCVariant      :: !GHCVariant
       -- ^ The variant of GHC used to select a GHC bindist.
-    , bcPackages :: ![PackageLocation Subdirs]
+    , bcPackages        :: ![PackageLocation Subdirs]
       -- ^ Local packages
-    , bcDependencies :: ![PackageLocationIndex Subdirs]
+    , bcDependencies    :: ![PackageLocationIndex Subdirs]
       -- ^ Extra dependencies specified in configuration.
       --
       -- These dependencies will not be installed to a shared location, and
       -- will override packages provided by the resolver.
     , bcExtraPackageDBs :: ![Path Abs Dir]
       -- ^ Extra package databases
-    , bcStackYaml  :: !(Path Abs File)
+    , bcStackYaml       :: !(Path Abs File)
       -- ^ Location of the stack.yaml file.
       --
       -- Note: if the STACK_YAML environment variable is used, this may be
@@ -503,12 +527,13 @@ data BuildConfig = BuildConfig
       --
       -- FIXME MSS 2016-12-08: is the above comment still true? projectRootL
       -- is defined in terms of bcStackYaml
-    , bcFlags      :: !(Map PackageName (Map FlagName Bool))
+    , bcFlags           :: !(Map PackageName (Map FlagName Bool))
       -- ^ Per-package flag overrides
-    , bcImplicitGlobal :: !Bool
+    , bcImplicitGlobal  :: !Bool
       -- ^ Are we loading from the implicit global stack.yaml? This is useful
       -- for providing better error messages.
-    }
+    }deriving(Generic, Typeable)
+instance Binary BuildConfig
 
 stackYamlL :: HasBuildConfig env => Lens' env (Path Abs File)
 stackYamlL = buildConfigL.lens bcStackYaml (\x y -> x { bcStackYaml = y })
@@ -519,8 +544,8 @@ projectRootL = stackYamlL.to parent
 
 -- | Configuration after the environment has been setup.
 data EnvConfig = EnvConfig
-    {envConfigBuildConfig :: !BuildConfig
-    ,envConfigCabalVersion :: !Version
+    {envConfigBuildConfig     :: !BuildConfig
+    ,envConfigCabalVersion    :: !Version
     -- ^ This is the version of Cabal that stack will use to compile Setup.hs files
     -- in the build process.
     --
@@ -531,24 +556,27 @@ data EnvConfig = EnvConfig
     -- ^ The actual version of the compiler to be used, as opposed to
     -- 'wantedCompilerL', which provides the version specified by the
     -- build plan.
-    ,envConfigCompilerBuild :: !CompilerBuild
-    ,envConfigPackagesRef :: !(IORef (Maybe LocalPackages))
+    ,envConfigCompilerBuild   :: !CompilerBuild
+    ,envConfigPackagesRef     :: !(Maybe LocalPackages)
     -- ^ Cache for 'getLocalPackages'.
-    ,envConfigLoadedSnapshot :: !LoadedSnapshot
+    ,envConfigLoadedSnapshot  :: !LoadedSnapshot
     -- ^ The fully resolved snapshot information.
-    }
+    }deriving(Generic, Typeable)
+instance Binary EnvConfig
 
 data LocalPackages = LocalPackages
   { lpProject :: !(Map PackageName LocalPackageView)
   , lpDependencies :: !(Map PackageName (GenericPackageDescription, PackageLocationIndex FilePath))
-  }
+  }deriving(Generic, Typeable)
+instance Binary LocalPackages
 
 -- | A view of a local package needed for resolving components
 data LocalPackageView = LocalPackageView
-    { lpvCabalFP    :: !(Path Abs File)
-    , lpvGPD        :: !GenericPackageDescription
-    , lpvLoc        :: !(PackageLocation FilePath)
-    }
+    { lpvCabalFP :: !(Path Abs File)
+    , lpvGPD     :: !GenericPackageDescription
+    , lpvLoc     :: !(PackageLocation FilePath)
+    }deriving (Generic, Typeable)
+instance Binary LocalPackageView
 
 -- | Root directory for the given 'LocalPackageView'
 lpvRoot :: LocalPackageView -> Path Abs Dir
@@ -601,8 +629,8 @@ data LoadConfig = LoadConfig
 
 data PackageEntry = PackageEntry
     { peExtraDepMaybe :: !(Maybe TreatLikeExtraDep)
-    , peLocation :: !(PackageLocation Subdirs)
-    , peSubdirs :: !Subdirs
+    , peLocation      :: !(PackageLocation Subdirs)
+    , peSubdirs       :: !Subdirs
     }
     deriving Show
 
@@ -633,10 +661,10 @@ instance FromJSON (WithJSONWarnings PackageEntry) where
 -- | A project is a collection of packages. We can have multiple stack.yaml
 -- files, but only one of them may contain project information.
 data Project = Project
-    { projectUserMsg :: !(Maybe String)
+    { projectUserMsg         :: !(Maybe String)
     -- ^ A warning message to display to the user when the auto generated
     -- config may have issues.
-    , projectPackages :: ![PackageLocation Subdirs]
+    , projectPackages        :: ![PackageLocation Subdirs]
     -- ^ Packages which are actually part of the project (as opposed
     -- to dependencies).
     --
@@ -646,18 +674,20 @@ data Project = Project
     -- with @[FilePath]@ to properly enforce this idea, though it will
     -- slightly break backwards compatibility if someone really did
     -- want to treat such things as non-deps.
-    , projectDependencies :: ![PackageLocationIndex Subdirs]
+    , projectDependencies    :: ![PackageLocationIndex Subdirs]
     -- ^ Dependencies defined within the stack.yaml file, to be
     -- applied on top of the snapshot.
-    , projectFlags :: !(Map PackageName (Map FlagName Bool))
+    , projectFlags           :: !(Map PackageName (Map FlagName Bool))
     -- ^ Flags to be applied on top of the snapshot flags.
-    , projectResolver :: !Resolver
+    , projectResolver        :: !Resolver
     -- ^ How we resolve which @SnapshotDef@ to use
-    , projectCompiler :: !(Maybe (CompilerVersion 'CVWanted))
+    , projectCompiler        :: !(Maybe (CompilerVersion 'CVWanted))
     -- ^ When specified, overrides which compiler to use
     , projectExtraPackageDBs :: ![FilePath]
     }
-  deriving Show
+  deriving (Show, Generic, Typeable)
+
+instance Binary Project
 
 instance ToJSON Project where
     -- Expanding the constructor fully to ensure we don't miss any fields.
@@ -675,95 +705,95 @@ instance ToJSON Project where
 -- Configurations may be "cascaded" using mappend (left-biased).
 data ConfigMonoid =
   ConfigMonoid
-    { configMonoidStackRoot          :: !(First (Path Abs Dir))
+    { configMonoidStackRoot              :: !(First (Path Abs Dir))
     -- ^ See: 'clStackRoot'
-    , configMonoidWorkDir            :: !(First (Path Rel Dir))
+    , configMonoidWorkDir                :: !(First (Path Rel Dir))
     -- ^ See: 'configWorkDir'.
-    , configMonoidBuildOpts          :: !BuildOptsMonoid
+    , configMonoidBuildOpts              :: !BuildOptsMonoid
     -- ^ build options.
-    , configMonoidDockerOpts         :: !DockerOptsMonoid
+    , configMonoidDockerOpts             :: !DockerOptsMonoid
     -- ^ Docker options.
-    , configMonoidNixOpts            :: !NixOptsMonoid
+    , configMonoidNixOpts                :: !NixOptsMonoid
     -- ^ Options for the execution environment (nix-shell or container)
-    , configMonoidConnectionCount    :: !(First Int)
+    , configMonoidConnectionCount        :: !(First Int)
     -- ^ See: 'configConnectionCount'
-    , configMonoidHideTHLoading      :: !(First Bool)
+    , configMonoidHideTHLoading          :: !(First Bool)
     -- ^ See: 'configHideTHLoading'
-    , configMonoidLatestSnapshotUrl  :: !(First Text)
+    , configMonoidLatestSnapshotUrl      :: !(First Text)
     -- ^ Deprecated in favour of 'urlsMonoidLatestSnapshot'
-    , configMonoidUrls               :: !UrlsMonoid
+    , configMonoidUrls                   :: !UrlsMonoid
     -- ^ See: 'configUrls
-    , configMonoidPackageIndices     :: !(First [PackageIndex])
+    , configMonoidPackageIndices         :: !(First [PackageIndex])
     -- ^ See: @picIndices@
-    , configMonoidSystemGHC          :: !(First Bool)
+    , configMonoidSystemGHC              :: !(First Bool)
     -- ^ See: 'configSystemGHC'
-    ,configMonoidInstallGHC          :: !(First Bool)
+    ,configMonoidInstallGHC              :: !(First Bool)
     -- ^ See: 'configInstallGHC'
-    ,configMonoidSkipGHCCheck        :: !(First Bool)
+    ,configMonoidSkipGHCCheck            :: !(First Bool)
     -- ^ See: 'configSkipGHCCheck'
-    ,configMonoidSkipMsys            :: !(First Bool)
+    ,configMonoidSkipMsys                :: !(First Bool)
     -- ^ See: 'configSkipMsys'
-    ,configMonoidCompilerCheck       :: !(First VersionCheck)
+    ,configMonoidCompilerCheck           :: !(First VersionCheck)
     -- ^ See: 'configCompilerCheck'
-    ,configMonoidRequireStackVersion :: !IntersectingVersionRange
+    ,configMonoidRequireStackVersion     :: !IntersectingVersionRange
     -- ^ See: 'configRequireStackVersion'
-    ,configMonoidArch                :: !(First String)
+    ,configMonoidArch                    :: !(First String)
     -- ^ Used for overriding the platform
-    ,configMonoidGHCVariant          :: !(First GHCVariant)
+    ,configMonoidGHCVariant              :: !(First GHCVariant)
     -- ^ Used for overriding the platform
-    ,configMonoidGHCBuild            :: !(First CompilerBuild)
+    ,configMonoidGHCBuild                :: !(First CompilerBuild)
     -- ^ Used for overriding the GHC build
-    ,configMonoidJobs                :: !(First Int)
+    ,configMonoidJobs                    :: !(First Int)
     -- ^ See: 'configJobs'
-    ,configMonoidExtraIncludeDirs    :: !(Set FilePath)
+    ,configMonoidExtraIncludeDirs        :: !(Set FilePath)
     -- ^ See: 'configExtraIncludeDirs'
-    ,configMonoidExtraLibDirs        :: !(Set FilePath)
+    ,configMonoidExtraLibDirs            :: !(Set FilePath)
     -- ^ See: 'configExtraLibDirs'
-    , configMonoidOverrideGccPath    :: !(First (Path Abs File))
+    , configMonoidOverrideGccPath        :: !(First (Path Abs File))
     -- ^ Allow users to override the path to gcc
-    ,configMonoidOverrideHpack       :: !(First FilePath)
+    ,configMonoidOverrideHpack           :: !(First FilePath)
     -- ^ Use Hpack executable (overrides bundled Hpack)
-    ,configMonoidConcurrentTests     :: !(First Bool)
+    ,configMonoidConcurrentTests         :: !(First Bool)
     -- ^ See: 'configConcurrentTests'
-    ,configMonoidLocalBinPath        :: !(First FilePath)
+    ,configMonoidLocalBinPath            :: !(First FilePath)
     -- ^ Used to override the binary installation dir
-    ,configMonoidImageOpts           :: !ImageOptsMonoid
+    ,configMonoidImageOpts               :: !ImageOptsMonoid
     -- ^ Image creation options.
-    ,configMonoidTemplateParameters  :: !(Map Text Text)
+    ,configMonoidTemplateParameters      :: !(Map Text Text)
     -- ^ Template parameters.
-    ,configMonoidScmInit             :: !(First SCM)
+    ,configMonoidScmInit                 :: !(First SCM)
     -- ^ Initialize SCM (e.g. git init) when making new projects?
-    ,configMonoidGhcOptionsByName    :: !(Map PackageName [Text])
+    ,configMonoidGhcOptionsByName        :: !(Map PackageName [Text])
     -- ^ See 'configGhcOptionsByName'
-    ,configMonoidGhcOptionsByCat     :: !(Map ApplyGhcOptions [Text])
+    ,configMonoidGhcOptionsByCat         :: !(Map ApplyGhcOptions [Text])
     -- ^ See 'configGhcOptionsAll'
-    ,configMonoidExtraPath           :: ![Path Abs Dir]
+    ,configMonoidExtraPath               :: ![Path Abs Dir]
     -- ^ Additional paths to search for executables in
-    ,configMonoidSetupInfoLocations  :: ![SetupInfoLocation]
+    ,configMonoidSetupInfoLocations      :: ![SetupInfoLocation]
     -- ^ Additional setup info (inline or remote) to use for installing tools
-    ,configMonoidLocalProgramsBase   :: !(First (Path Abs Dir))
+    ,configMonoidLocalProgramsBase       :: !(First (Path Abs Dir))
     -- ^ Override the default local programs dir, where e.g. GHC is installed.
-    ,configMonoidPvpBounds           :: !(First PvpBounds)
+    ,configMonoidPvpBounds               :: !(First PvpBounds)
     -- ^ See 'configPvpBounds'
-    ,configMonoidModifyCodePage      :: !(First Bool)
+    ,configMonoidModifyCodePage          :: !(First Bool)
     -- ^ See 'configModifyCodePage'
-    ,configMonoidExplicitSetupDeps   :: !(Map (Maybe PackageName) Bool)
+    ,configMonoidExplicitSetupDeps       :: !(Map (Maybe PackageName) Bool)
     -- ^ See 'configExplicitSetupDeps'
-    ,configMonoidRebuildGhcOptions   :: !(First Bool)
+    ,configMonoidRebuildGhcOptions       :: !(First Bool)
     -- ^ See 'configMonoidRebuildGhcOptions'
-    ,configMonoidApplyGhcOptions     :: !(First ApplyGhcOptions)
+    ,configMonoidApplyGhcOptions         :: !(First ApplyGhcOptions)
     -- ^ See 'configApplyGhcOptions'
-    ,configMonoidAllowNewer          :: !(First Bool)
+    ,configMonoidAllowNewer              :: !(First Bool)
     -- ^ See 'configMonoidAllowNewer'
-    ,configMonoidDefaultTemplate     :: !(First TemplateName)
+    ,configMonoidDefaultTemplate         :: !(First TemplateName)
     -- ^ The default template to use when none is specified.
     -- (If Nothing, the default default is used.)
-    , configMonoidAllowDifferentUser :: !(First Bool)
+    , configMonoidAllowDifferentUser     :: !(First Bool)
     -- ^ Allow users other than the stack root owner to use the stack
     -- installation.
-    , configMonoidDumpLogs           :: !(First DumpLogs)
+    , configMonoidDumpLogs               :: !(First DumpLogs)
     -- ^ See 'configDumpLogs'
-    , configMonoidSaveHackageCreds   :: !(First Bool)
+    , configMonoidSaveHackageCreds       :: !(First Bool)
     -- ^ See 'configSaveHackageCreds'
     , configMonoidIgnoreRevisionMismatch :: !(First Bool)
     -- ^ See 'configIgnoreRevisionMismatch'
@@ -869,7 +899,7 @@ parseConfigMonoidObject rootDir obj = do
             if name' == "*"
                 then return Nothing
                 else case parsePackageNameFromString $ T.unpack name' of
-                        Left e -> fail $ show e
+                        Left e  -> fail $ show e
                         Right x -> return $ Just x
         return (name, b)
 
@@ -1045,7 +1075,7 @@ instance Show ConfigException where
         , toFilePath dir
         , ") or its ancestors"
         , case mcmd of
-            Nothing -> ""
+            Nothing  -> ""
             Just cmd -> "\nRecommended action: stack " ++ T.unpack cmd
         ]
     show (UnexpectedArchiveContents dirs files) = concat
@@ -1089,7 +1119,7 @@ instance Show ConfigException where
         , showOptions whichCmd
             (case whichCmd of
                 IsSolverCmd -> Don'tSuggestSolver
-                _ -> SuggestSolver)
+                _           -> SuggestSolver)
         ]
     show (NoSuchDirectory dir) =
         "No directory could be located matching the supplied path: " ++ dir
@@ -1153,12 +1183,12 @@ showOptions whichCmd suggestSolver = unlines $ "\nThis may be resolved by:" : op
   where
     options =
         (case suggestSolver of
-            SuggestSolver -> [useSolver]
+            SuggestSolver      -> [useSolver]
             Don'tSuggestSolver -> []) ++
         (case whichCmd of
             IsSolverCmd -> [useResolver]
-            IsInitCmd -> both
-            IsNewCmd -> both)
+            IsInitCmd   -> both
+            IsNewCmd    -> both)
     both = [omitPackages, useResolver]
     useSolver    = "    - Using '--solver' to ask cabal-install to generate extra-deps, atop the chosen snapshot."
     omitPackages = "    - Using '--omit-packages to exclude mismatching package(s)."
@@ -1320,7 +1350,7 @@ compilerVersionDir = do
     compilerVersion <- view actualCompilerVersionL
     parseRelDir $ case compilerVersion of
         GhcVersion version -> versionString version
-        GhcjsVersion {} -> compilerVersionString compilerVersion
+        GhcjsVersion {}    -> compilerVersionString compilerVersion
 
 -- | Package database for installing dependencies into
 packageDatabaseDeps :: (MonadThrow m, MonadReader env m, HasEnvConfig env) => m (Path Abs Dir)
@@ -1357,7 +1387,7 @@ configLoadedSnapshotCache sd gis = do
     gis' <- parseRelDir $
           case gis of
             GISSnapshotHints -> "__snapshot_hints__"
-            GISCompiler cv -> compilerVersionString cv
+            GISCompiler cv   -> compilerVersionString cv
     -- Yes, cached plans differ based on platform
     return (root </> $(mkRelDir "loaded-snapshot-cache") </> platform </> gis' </> file)
 
@@ -1532,14 +1562,15 @@ packageEntryCurrDir = PackageEntry
 
 -- | A software control system.
 data SCM = Git
-  deriving (Show)
+        deriving (Show, Generic, Typeable)
+instance Binary SCM
 
 instance FromJSON SCM where
     parseJSON v = do
         s <- parseJSON v
         case s of
             "git" -> return Git
-            _ -> fail ("Unknown or unsupported SCM: " <> s)
+            _     -> fail ("Unknown or unsupported SCM: " <> s)
 
 instance ToJSON SCM where
     toJSON Git = toJSON ("git" :: Text)
@@ -1547,7 +1578,8 @@ instance ToJSON SCM where
 -- | A variant of the platform, used to differentiate Docker builds from host
 data PlatformVariant = PlatformVariantNone
                      | PlatformVariant String
-
+                     deriving(Generic, Typeable)
+instance Binary PlatformVariant
 -- | Render a platform variant to a String suffix.
 platformVariantSuffix :: PlatformVariant -> String
 platformVariantSuffix PlatformVariantNone = ""
@@ -1558,7 +1590,8 @@ data GHCVariant
     = GHCStandard -- ^ Standard bindist
     | GHCIntegerSimple -- ^ Bindist that uses integer-simple
     | GHCCustom String -- ^ Other bindists
-    deriving (Show)
+    deriving (Show, Generic, Typeable)
+instance Binary GHCVariant
 
 instance FromJSON GHCVariant where
     -- Strange structuring is to give consistent error messages
@@ -1569,14 +1602,14 @@ instance FromJSON GHCVariant where
 
 -- | Render a GHC variant to a String.
 ghcVariantName :: GHCVariant -> String
-ghcVariantName GHCStandard = "standard"
+ghcVariantName GHCStandard      = "standard"
 ghcVariantName GHCIntegerSimple = "integersimple"
 ghcVariantName (GHCCustom name) = "custom-" ++ name
 
 -- | Render a GHC variant to a String suffix.
 ghcVariantSuffix :: GHCVariant -> String
 ghcVariantSuffix GHCStandard = ""
-ghcVariantSuffix v = "-" ++ ghcVariantName v
+ghcVariantSuffix v           = "-" ++ ghcVariantName v
 
 -- | Parse GHC variant from a String.
 parseGHCVariant :: (MonadThrow m) => String -> m GHCVariant
@@ -1592,12 +1625,13 @@ parseGHCVariant s =
 -- | Build of the compiler distribution (e.g. standard, gmp4, tinfo6)
 -- | Information for a file to download.
 data DownloadInfo = DownloadInfo
-    { downloadInfoUrl :: Text
+    { downloadInfoUrl           :: Text
       -- ^ URL or absolute file path
     , downloadInfoContentLength :: Maybe Int
-    , downloadInfoSha1 :: Maybe ByteString
-    , downloadInfoSha256 :: Maybe ByteString
-    } deriving (Show)
+    , downloadInfoSha1          :: Maybe ByteString
+    , downloadInfoSha256        :: Maybe ByteString
+    } deriving (Show, Generic, Typeable)
+instance Binary DownloadInfo
 
 instance FromJSON (WithJSONWarnings DownloadInfo) where
     parseJSON = withObjectWarnings "DownloadInfo" parseDownloadInfoFromObject
@@ -1618,10 +1652,11 @@ parseDownloadInfoFromObject o = do
         }
 
 data VersionedDownloadInfo = VersionedDownloadInfo
-    { vdiVersion :: Version
+    { vdiVersion      :: Version
     , vdiDownloadInfo :: DownloadInfo
     }
-    deriving Show
+    deriving (Show, Generic, Typeable)
+instance Binary VersionedDownloadInfo
 
 instance FromJSON (WithJSONWarnings VersionedDownloadInfo) where
     parseJSON = withObjectWarnings "VersionedDownloadInfo" $ \o -> do
@@ -1634,10 +1669,11 @@ instance FromJSON (WithJSONWarnings VersionedDownloadInfo) where
 
 data GHCDownloadInfo = GHCDownloadInfo
     { gdiConfigureOpts :: [Text]
-    , gdiConfigureEnv :: Map Text Text
-    , gdiDownloadInfo :: DownloadInfo
+    , gdiConfigureEnv  :: Map Text Text
+    , gdiDownloadInfo  :: DownloadInfo
     }
-    deriving Show
+    deriving (Show, Generic, Typeable)
+instance Binary GHCDownloadInfo
 
 instance FromJSON (WithJSONWarnings GHCDownloadInfo) where
     parseJSON = withObjectWarnings "GHCDownloadInfo" $ \o -> do
@@ -1653,12 +1689,13 @@ instance FromJSON (WithJSONWarnings GHCDownloadInfo) where
 data SetupInfo = SetupInfo
     { siSevenzExe :: Maybe DownloadInfo
     , siSevenzDll :: Maybe DownloadInfo
-    , siMsys2 :: Map Text VersionedDownloadInfo
-    , siGHCs :: Map Text (Map Version GHCDownloadInfo)
-    , siGHCJSs :: Map Text (Map (CompilerVersion 'CVActual) DownloadInfo)
-    , siStack :: Map Text (Map Version DownloadInfo)
+    , siMsys2     :: Map Text VersionedDownloadInfo
+    , siGHCs      :: Map Text (Map Version GHCDownloadInfo)
+    , siGHCJSs    :: Map Text (Map (CompilerVersion 'CVActual) DownloadInfo)
+    , siStack     :: Map Text (Map Version DownloadInfo)
     }
-    deriving Show
+    deriving (Show, Generic, Typeable)
+instance Binary SetupInfo
 
 instance FromJSON (WithJSONWarnings SetupInfo) where
     parseJSON = withObjectWarnings "SetupInfo" $ \o -> do
@@ -1695,7 +1732,8 @@ instance Monoid SetupInfo where
 data SetupInfoLocation
     = SetupInfoFileOrURL String
     | SetupInfoInline SetupInfo
-    deriving (Show)
+    deriving (Show, Generic, Typeable)
+instance Binary SetupInfoLocation
 
 instance FromJSON (WithJSONWarnings SetupInfoLocation) where
     parseJSON v =
@@ -1713,27 +1751,30 @@ data PvpBoundsType
   | PvpBoundsUpper
   | PvpBoundsLower
   | PvpBoundsBoth
-  deriving (Show, Read, Eq, Typeable, Ord, Enum, Bounded)
+  deriving (Show, Read, Eq, Typeable, Ord, Enum, Bounded, Generic)
+instance Binary PvpBoundsType
 
 data PvpBounds = PvpBounds
-  { pbType :: !PvpBoundsType
+  { pbType       :: !PvpBoundsType
   , pbAsRevision :: !Bool
   }
-  deriving (Show, Read, Eq, Typeable, Ord)
+  deriving (Show, Read, Eq, Typeable, Ord, Generic, Typeable)
+
+instance Binary PvpBounds
 
 pvpBoundsText :: PvpBoundsType -> Text
-pvpBoundsText PvpBoundsNone = "none"
+pvpBoundsText PvpBoundsNone  = "none"
 pvpBoundsText PvpBoundsUpper = "upper"
 pvpBoundsText PvpBoundsLower = "lower"
-pvpBoundsText PvpBoundsBoth = "both"
+pvpBoundsText PvpBoundsBoth  = "both"
 
 parsePvpBounds :: Text -> Either String PvpBounds
 parsePvpBounds t = maybe err Right $ do
     (t', asRevision) <-
       case T.break (== '-') t of
-        (x, "") -> Just (x, False)
+        (x, "")          -> Just (x, False)
         (x, "-revision") -> Just (x, True)
-        _ -> Nothing
+        _                -> Nothing
     x <- Map.lookup t' m
     Just PvpBounds
       { pbType = x
@@ -1760,7 +1801,7 @@ explicitSetupDeps name = do
             Just b -> b
             Nothing ->
                 case Map.lookup Nothing m of
-                    Just b -> b
+                    Just b  -> b
                     Nothing -> False -- default value
 
 -- | Data passed into Docker container for the Docker entrypoint's use
@@ -1771,10 +1812,10 @@ newtype DockerEntrypoint = DockerEntrypoint
 
 -- | Docker host user info
 data DockerUser = DockerUser
-    { duUid :: UserID -- ^ uid
-    , duGid :: GroupID -- ^ gid
+    { duUid    :: UserID -- ^ uid
+    , duGid    :: GroupID -- ^ gid
     , duGroups :: [GroupID] -- ^ Supplemantal groups
-    , duUmask :: FileMode -- ^ File creation mask }
+    , duUmask  :: FileMode -- ^ File creation mask }
     } deriving (Read,Show)
 
 data GhcOptionKey
@@ -1794,7 +1835,7 @@ instance FromJSONKey GhcOptionKey where
       "$targets" -> return GOKTargets
       _ ->
         case parsePackageName t of
-          Left e -> fail $ show e
+          Left e  -> fail $ show e
           Right x -> return $ GOKPackage x
   fromJSONKeyList = FromJSONKeyTextParser $ \_ -> fail "GhcOptionKey.fromJSONKeyList"
 
@@ -1803,7 +1844,7 @@ newtype GhcOptions = GhcOptions { unGhcOptions :: [Text] }
 instance FromJSON GhcOptions where
   parseJSON = withText "GhcOptions" $ \t ->
     case parseArgs Escaping t of
-      Left e -> fail e
+      Left e     -> fail e
       Right opts -> return $ GhcOptions $ map T.pack opts
 
 -----------------------------------
@@ -2001,10 +2042,10 @@ loadedSnapshotL = envConfigL.lens
 whichCompilerL :: Getting r (CompilerVersion a) WhichCompiler
 whichCompilerL = to whichCompiler
 
-envOverrideSettingsL :: HasConfig env => Lens' env (EnvSettings -> IO EnvOverride)
-envOverrideSettingsL = configL.lens
-    configEnvOverrideSettings
-    (\x y -> x { configEnvOverrideSettings = y })
+--envOverrideSettingsL :: HasConfig env => Lens' env (EnvSettings -> IO EnvOverride)
+--envOverrideSettingsL = configL.lens
+--    configEnvOverrideSettings
+--    (\x y -> x { configEnvOverrideSettings = y })
 
 shouldForceGhcColorFlag :: (HasRunner env, HasEnvConfig env)
                         => RIO env Bool
@@ -2017,5 +2058,5 @@ shouldForceGhcColorFlag = do
 appropriateGhcColorFlag :: (HasRunner env, HasEnvConfig env)
                         => RIO env (Maybe String)
 appropriateGhcColorFlag = f <$> shouldForceGhcColorFlag
-  where f True = Just ghcColorForceFlag
+  where f True  = Just ghcColorForceFlag
         f False = Nothing

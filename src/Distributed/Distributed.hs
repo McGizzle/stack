@@ -4,12 +4,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 
-module Control.Concurrent.Distributed where
+module Distributed.Distributed where
 
-import           Stack.Prelude
-import System.IO
+import           Distributed.Build.Execute
+
 import           Control.Concurrent                                 (threadDelay)
 import           Debug.Trace
+import           Stack.Prelude
+import           System.IO
 -- CLOUD HASKELL
 import           Control.Distributed.Process                        hiding
                                                                      (mask)
@@ -20,7 +22,9 @@ import           Network.Transport.TCP                              (createTrans
                                                                      defaultTCPParameters)
 
 import           Control.Concurrent.Types
-import Data.Binary
+import           Data.Binary
+
+import           Distributed.Types
 
 data FakeException = FakeException
         deriving(Show)
@@ -31,6 +35,12 @@ instance Exception FakeException
 plog :: String -> Process ()
 plog msg = say $ "--> " ++ msg
 
+runActionDist :: Int -> BuildInfo -> ActionContext -> IO ()
+runActionDist count action context = do
+        print "Distribution code in action"
+        startManager count "127.0.0.1" "5600" action context
+
+
 worker :: ProcessId -> Process ()
 worker manager = do
         me <- getSelfPid
@@ -39,15 +49,15 @@ worker manager = do
         run manager
         where
             run manager = receiveWait[match end, match work]
-              where 
-                work :: String -> Process ()
-                work ad = do
-                  plog "Functions received! "
-                  send manager "I got the functions!"
+              where
+                work :: (BuildInfo,ActionContext) -> Process ()
+                work (BuildInfo{..},ac) = do
+                  plog "Data received! "
+                  liftIO $ runRIO (singleBuild ac exeEnv task installedMap isFB) envConfig
+                  send manager True
                   run manager
                 end () = do
                   plog "Bye"
-                  send manager "Done"
                   return ()
 
 remotable['worker]
@@ -55,32 +65,24 @@ remotable['worker]
 rtable :: RemoteTable
 rtable = Control.Concurrent.Distributed.__remoteTable initRemoteTable
 
-runActionDist :: Action -> ActionContext -> IO ()
-runActionDist action context = do
-        print "Distribution code in action"
-        startManager "127.0.0.1" "5600" action context
-
 startWorker :: String -> String -> IO ()
 startWorker host port = do
-        print "Loading Worker" 
-        backend <- initializeBackend host port rtable 
+        print "Loading Worker"
+        backend <- initializeBackend host port rtable
         startSlave backend
 
-startManager :: String -> String -> Action -> ActionContext -> IO ()
+startManager :: String -> String -> BuildInfo -> ActionContext -> IO ()
 startManager host port action context = do
         print "Loading Manager"
         backend <- initializeBackend host port rtable
         startMaster backend $ \ nids -> do
                 me <- getSelfPid
-                let f = actionDo action
-                forM_ nids $ \ nid -> spawn nid $ $(mkClosure 'worker) me
-                pid <- expect
-                send pid (encode $ actionDo action)
-                resp <- expect
-                liftIO . putStrLn $ "resp: " ++ resp
+                (pid:_) <- forM nids $ \ nid -> spawn nid $ $(mkClosure 'worker) me
+                send pid (action,context)
+                True <- expect
+                liftIO $ putStrLn "Worker Done!"
                 send pid ()
-                kill :: String <- expect 
-                terminateAllSlaves backend        
+                terminateAllSlaves backend
         return ()
 
 ----------------------------------------------------------------------------------

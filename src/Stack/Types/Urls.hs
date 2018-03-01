@@ -1,20 +1,24 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Stack.Types.Urls where
 
-import Data.Aeson.Extended
-import Generics.Deriving.Monoid (memptydefault, mappenddefault)
-import Stack.Prelude
+import           Data.Aeson.Extended
+import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import           Stack.Prelude
+
+import           Data.Binary
 
 data Urls = Urls
-    { urlsLatestSnapshot :: !Text
-    , urlsLtsBuildPlans :: !Text
+    { urlsLatestSnapshot    :: !Text
+    , urlsLtsBuildPlans     :: !Text
     , urlsNightlyBuildPlans :: !Text
     }
-    deriving Show
+    deriving (Show, Generic, Typeable)
+
+instance Binary Urls
 
 -- TODO: Really need this instance?
 instance FromJSON (WithJSONWarnings Urls) where
@@ -25,8 +29,8 @@ instance FromJSON (WithJSONWarnings Urls) where
             <*> o ..: "nightly-build-plans"
 
 data UrlsMonoid = UrlsMonoid
-    { urlsMonoidLatestSnapshot :: !(First Text)
-    , urlsMonoidLtsBuildPlans :: !(First Text)
+    { urlsMonoidLatestSnapshot    :: !(First Text)
+    , urlsMonoidLtsBuildPlans     :: !(First Text)
     , urlsMonoidNightlyBuildPlans :: !(First Text)
     }
     deriving (Show, Generic)

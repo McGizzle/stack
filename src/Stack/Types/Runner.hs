@@ -28,26 +28,31 @@ module Stack.Types.Runner
     , withRunner
     ) where
 
-import qualified Data.ByteString.Char8      as S8
+import qualified Data.ByteString.Char8           as S8
 import           Data.Char
-import           Data.List                  (stripPrefix)
-import qualified Data.Text                  as T
-import qualified Data.Text.IO               as T
+import           Data.List                       (stripPrefix)
+import qualified Data.Text                       as T
+import qualified Data.Text.IO                    as T
 import           Data.Time
 import           Distribution.PackageDescription (GenericPackageDescription)
-import           GHC.Foreign                (peekCString, withCString)
-import           GHC.Stack                  (CallStack, SrcLoc (..), getCallStack)
+import           GHC.Foreign                     (peekCString, withCString)
+import           GHC.Stack                       (CallStack, SrcLoc (..),
+                                                  getCallStack)
 import           Language.Haskell.TH
-import           Language.Haskell.TH.Syntax (lift)
+import           Language.Haskell.TH.Syntax      (lift)
 import           Lens.Micro
-import           Stack.Prelude              hiding (lift)
+import           RIO.Process                     (EnvOverride,
+                                                  HasEnvOverride (..),
+                                                  getEnvOverride)
 import           Stack.Constants
-import           Stack.Types.PackageIdentifier (PackageIdentifierRevision)
+import           Stack.Prelude                   hiding (lift)
+import           Stack.Types.PackageIdentifier   (PackageIdentifierRevision)
 import           System.Console.ANSI
 import           System.FilePath
-import           System.IO                  (localeEncoding)
-import           RIO.Process (HasEnvOverride (..), EnvOverride, getEnvOverride)
+import           System.IO                       (localeEncoding)
 import           System.Terminal
+
+import           Data.Binary
 
 -- | Monadic environment.
 data Runner = Runner
@@ -56,7 +61,7 @@ data Runner = Runner
   , runnerTerminal   :: !Bool
   , runnerSticky     :: !Sticky
   , runnerEnvOverride :: !EnvOverride
-  , runnerParsedCabalFiles :: !(IORef
+  , runnerParsedCabalFiles :: !(
       ( Map PackageIdentifierRevision GenericPackageDescription
       , Map (Path Abs Dir)            (GenericPackageDescription, Path Abs File)
       ))
@@ -68,7 +73,8 @@ data Runner = Runner
   -- that it only ever parses a cabal file once. But for now, this is
   -- a decent workaround. See:
   -- <https://github.com/commercialhaskell/stack/issues/3591>.
-  }
+  }deriving(Generic,Typeable)
+instance Binary Runner
 
 class HasEnvOverride env => HasRunner env where
   runnerL :: Lens' env Runner
@@ -90,8 +96,9 @@ logOptionsL :: HasRunner env => Lens' env LogOptions
 logOptionsL = runnerL.lens runnerLogOptions (\x y -> x { runnerLogOptions = y })
 
 newtype Sticky = Sticky
-  { unSticky :: Maybe (MVar (Maybe Text))
-  }
+  { unSticky :: Maybe ((Maybe Text))
+  }deriving(Generic,Typeable)
+instance Binary Sticky
 
 data LogOptions = LogOptions
   { logUseColor      :: Bool
@@ -100,7 +107,9 @@ data LogOptions = LogOptions
   , logUseTime       :: Bool
   , logMinLevel      :: LogLevel
   , logVerboseFormat :: Bool
-  }
+  }deriving(Generic,Typeable)
+
+instance Binary LogOptions
 
 --------------------------------------------------------------------------------
 -- Logging functionality
@@ -112,8 +121,9 @@ instance HasLogFunc Runner where
 stickyLoggerFuncImpl
     :: Sticky -> LogOptions
     -> (CallStack -> LogSource -> LogLevel -> LogStr -> IO ())
-stickyLoggerFuncImpl (Sticky mref) lo loc src level msgTextRaw =
-    case mref of
+stickyLoggerFuncImpl (Sticky mref) lo loc src level msgTextRaw = do
+    l <- newMVar mref
+    case Nothing of
         Nothing ->
             loggerFunc
                 lo
@@ -122,8 +132,8 @@ stickyLoggerFuncImpl (Sticky mref) lo loc src level msgTextRaw =
                 src
                 (case level of
                      LevelOther "sticky-done" -> LevelInfo
-                     LevelOther "sticky" -> LevelInfo
-                     _ -> level)
+                     LevelOther "sticky"      -> LevelInfo
+                     _                        -> level)
                 msgTextRaw
         Just ref -> modifyMVar_ ref $ \sticky -> do
             let backSpaceChar = '\8'
@@ -168,7 +178,7 @@ stickyLoggerFuncImpl (Sticky mref) lo loc src level msgTextRaw =
 replaceUnicode :: Char -> Char
 replaceUnicode '\x2018' = '`'
 replaceUnicode '\x2019' = '\''
-replaceUnicode c = c
+replaceUnicode c        = c
 
 -- | Logging function takes the log level into account.
 loggerFunc :: LogOptions -> Handle -> CallStack -> Text -> LogLevel -> LogStr -> IO ()
@@ -205,10 +215,10 @@ loggerFunc lo outputChannel cs _src level msg =
        getLevel
          | logVerboseFormat lo =
            return ((case level of
-                      LevelDebug -> ansi [SetColor Foreground Dull Green]
-                      LevelInfo -> ansi [SetColor Foreground Dull Blue]
-                      LevelWarn -> ansi [SetColor Foreground Dull Yellow]
-                      LevelError -> ansi [SetColor Foreground Dull Red]
+                      LevelDebug   -> ansi [SetColor Foreground Dull Green]
+                      LevelInfo    -> ansi [SetColor Foreground Dull Blue]
+                      LevelWarn    -> ansi [SetColor Foreground Dull Yellow]
+                      LevelError   -> ansi [SetColor Foreground Dull Red]
                       LevelOther _ -> ansi [SetColor Foreground Dull Magenta]) ++
                    "[" ++
                    map toLower (drop 5 (show level)) ++
@@ -245,12 +255,11 @@ withSticky :: (MonadIO m)
            => Bool -> (Sticky -> m b) -> m b
 withSticky terminal m =
     if terminal
-       then do state <- liftIO (newMVar Nothing)
+       then do let state = Nothing
                originalMode <- liftIO (hGetBuffering stdout)
                liftIO (hSetBuffering stdout NoBuffering)
                a <- m (Sticky (Just state))
-               state' <- liftIO (takeMVar state)
-               liftIO (when (isJust state') (S8.putStr "\n"))
+               liftIO (when (isJust state) (S8.putStr "\n"))
                liftIO (hSetBuffering stdout originalMode)
                return a
        else m (Sticky Nothing)
@@ -267,14 +276,14 @@ withRunner :: MonadIO m
            -> m a
 withRunner logLevel useTime terminal colorWhen widthOverride reExec inner = do
   useColor <- case colorWhen of
-    ColorNever -> return False
+    ColorNever  -> return False
     ColorAlways -> return True
-    ColorAuto -> liftIO $ hSupportsANSI stderr
+    ColorAuto   -> liftIO $ hSupportsANSI stderr
   termWidth <- clipWidth <$> maybe (fromMaybe defaultTerminalWidth
                                     <$> liftIO getTerminalWidth)
                                    pure widthOverride
   canUseUnicode <- liftIO getCanUseUnicode
-  ref <- newIORef mempty
+  --ref <- newIORef mempty
   menv <- getEnvOverride
   withSticky terminal $ \sticky -> inner Runner
     { runnerReExec = reExec
@@ -288,7 +297,7 @@ withRunner logLevel useTime terminal colorWhen widthOverride reExec inner = do
         }
     , runnerTerminal = terminal
     , runnerSticky = sticky
-    , runnerParsedCabalFiles = ref
+    , runnerParsedCabalFiles = mempty
     , runnerEnvOverride = menv
     }
   where clipWidth w

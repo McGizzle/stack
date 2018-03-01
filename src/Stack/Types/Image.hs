@@ -1,39 +1,43 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Stack.Types.Image where
 
-import Data.Aeson.Extended
-import qualified Data.Map as Map
-import Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import Path
-import Stack.Prelude
+import           Data.Aeson.Extended
+import qualified Data.Map                 as Map
+import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import           Path
+import           Stack.Prelude
 
+import           Data.Binary
 -- | Image options. Currently only Docker image options.
 newtype ImageOpts = ImageOpts
     { imgDockers :: [ImageDockerOpts]
       -- ^ One or more stanzas for docker image settings.
-    } deriving (Show)
+    } deriving (Show, Generic, Typeable)
+instance Binary ImageOpts
 
 data ImageDockerOpts = ImageDockerOpts
-    { imgDockerBase :: !(Maybe String)
+    { imgDockerBase        :: !(Maybe String)
       -- ^ Maybe have a docker base image name. (Although we will not
       -- be able to create any Docker images without this.)
     , imgDockerEntrypoints :: !(Maybe [String])
       -- ^ Maybe have a specific ENTRYPOINT list that will be used to
       -- create images.
-    , imgDockerAdd :: !(Map FilePath (Path Abs Dir))
+    , imgDockerAdd         :: !(Map FilePath (Path Abs Dir))
       -- ^ Maybe have some static project content to include in a
       -- specific directory in all the images.
-    , imgDockerImageName :: !(Maybe String)
+    , imgDockerImageName   :: !(Maybe String)
       -- ^ Maybe have a name for the image we are creating
     , imgDockerExecutables :: !(Maybe [Path Rel File])
       -- ^ Filenames of executables to add (if Nothing, add them all)
-    } deriving (Show)
+    } deriving (Show, Generic, Typeable)
+
+instance Binary ImageDockerOpts
 
 newtype ImageOptsMonoid = ImageOptsMonoid
     { imgMonoidDockers :: [ImageDockerOpts]

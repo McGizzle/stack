@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Stack.Types.NamedComponent
@@ -14,12 +15,13 @@ module Stack.Types.NamedComponent
   , isCBench
   ) where
 
-import Stack.Prelude
-import Stack.Types.PackageName
-import qualified Data.Set as Set
-import Data.ByteString (ByteString)
-import qualified Data.Text as T
-import Data.Text.Encoding (encodeUtf8, decodeUtf8)
+import           Data.Binary
+import           Data.ByteString         (ByteString)
+import qualified Data.Set                as Set
+import qualified Data.Text               as T
+import           Data.Text.Encoding      (decodeUtf8, encodeUtf8)
+import           Stack.Prelude
+import           Stack.Types.PackageName
 
 -- | A single, fully resolved component of a package
 data NamedComponent
@@ -27,12 +29,13 @@ data NamedComponent
     | CExe !Text
     | CTest !Text
     | CBench !Text
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Generic, Typeable)
+instance Binary NamedComponent
 
 renderComponent :: NamedComponent -> ByteString
-renderComponent CLib = "lib"
-renderComponent (CExe x) = "exe:" <> encodeUtf8 x
-renderComponent (CTest x) = "test:" <> encodeUtf8 x
+renderComponent CLib       = "lib"
+renderComponent (CExe x)   = "exe:" <> encodeUtf8 x
+renderComponent (CTest x)  = "test:" <> encodeUtf8 x
 renderComponent (CBench x) = "bench:" <> encodeUtf8 x
 
 renderPkgComponents :: [(PackageName, NamedComponent)] -> Text
@@ -45,32 +48,32 @@ exeComponents :: Set NamedComponent -> Set Text
 exeComponents = Set.fromList . mapMaybe mExeName . Set.toList
   where
     mExeName (CExe name) = Just name
-    mExeName _ = Nothing
+    mExeName _           = Nothing
 
 testComponents :: Set NamedComponent -> Set Text
 testComponents = Set.fromList . mapMaybe mTestName . Set.toList
   where
     mTestName (CTest name) = Just name
-    mTestName _ = Nothing
+    mTestName _            = Nothing
 
 benchComponents :: Set NamedComponent -> Set Text
 benchComponents = Set.fromList . mapMaybe mBenchName . Set.toList
   where
     mBenchName (CBench name) = Just name
-    mBenchName _ = Nothing
+    mBenchName _             = Nothing
 
 isCLib :: NamedComponent -> Bool
 isCLib CLib{} = True
-isCLib _ = False
+isCLib _      = False
 
 isCExe :: NamedComponent -> Bool
 isCExe CExe{} = True
-isCExe _ = False
+isCExe _      = False
 
 isCTest :: NamedComponent -> Bool
 isCTest CTest{} = True
-isCTest _ = False
+isCTest _       = False
 
 isCBench :: NamedComponent -> Bool
 isCBench CBench{} = True
-isCBench _ = False
+isCBench _        = False

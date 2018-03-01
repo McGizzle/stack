@@ -1,19 +1,20 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE CPP                  #-}
+{-# LANGUAGE ConstraintKinds      #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveDataTypeable   #-}
+{-# LANGUAGE DeriveFoldable       #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DeriveTraversable    #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE MultiWayIf           #-}
+{-# LANGUAGE NoImplicitPrelude    #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Stack.Types.Resolver
@@ -37,26 +38,28 @@ module Stack.Types.Resolver
   ,parseCustomLocation
   ) where
 
-import           Crypto.Hash as Hash (hash, Digest, SHA256)
-import           Data.Aeson.Extended
-                 (ToJSON, toJSON, FromJSON, parseJSON,
-                  withObject, (.:), withText)
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Base64.URL as B64URL
-import qualified Data.HashMap.Strict as HashMap
-import qualified Data.IntMap.Strict as IntMap
-import qualified Data.Text as T
-import           Data.Text.Encoding (decodeUtf8)
-import           Data.Text.Read (decimal)
-import           Data.Time (Day)
-import           Network.HTTP.Client (Request, parseUrlThrow)
-import           Options.Applicative (ReadM)
-import qualified Options.Applicative.Types as OA
+import           Crypto.Hash                   as Hash (Digest, SHA256, hash)
+import           Data.Aeson.Extended           (FromJSON, ToJSON, parseJSON,
+                                                toJSON, withObject, withText,
+                                                (.:))
+import qualified Data.ByteString               as B
+import qualified Data.ByteString.Base64.URL    as B64URL
+import qualified Data.HashMap.Strict           as HashMap
+import qualified Data.IntMap.Strict            as IntMap
+import qualified Data.Text                     as T
+import           Data.Text.Encoding            (decodeUtf8)
+import           Data.Text.Read                (decimal)
+import           Data.Time                     (Day (..))
+import           Network.HTTP.Client           (Request, parseUrlThrow)
+import           Options.Applicative           (ReadM)
+import qualified Options.Applicative.Types     as OA
 import           Path
 import           Stack.Prelude
 import           Stack.Types.Compiler
 import           Stack.Types.PackageIdentifier
-import qualified System.FilePath as FP
+import qualified System.FilePath               as FP
+
+import           Data.Binary
 
 data IsLoaded = Loaded | NotLoaded
 
@@ -89,12 +92,13 @@ data ResolverWith customContents
     deriving (Generic, Typeable, Show, Data, Eq, Functor, Foldable, Traversable)
 instance Store LoadedResolver
 instance NFData LoadedResolver
+instance Binary a => Binary (ResolverWith a)
 
 instance ToJSON (ResolverWith a) where
     toJSON x = case x of
-        ResolverStackage name -> toJSON $ renderSnapName name
+        ResolverStackage name    -> toJSON $ renderSnapName name
         ResolverCompiler version -> toJSON $ compilerVersionText version
-        ResolverCustom loc _ -> toJSON loc
+        ResolverCustom loc _     -> toJSON loc
 instance a ~ () => FromJSON (ResolverWith a) where
     parseJSON = withText "ResolverWith ()" $ return . parseResolverText
 
@@ -103,7 +107,7 @@ instance a ~ () => FromJSON (ResolverWith a) where
 -- it will handle the human-friendly name inside a custom snapshot.
 resolverRawName :: ResolverWith a -> Text
 resolverRawName (ResolverStackage name) = renderSnapName name
-resolverRawName (ResolverCompiler v) = compilerVersionText v
+resolverRawName (ResolverCompiler v)    = compilerVersionText v
 resolverRawName (ResolverCustom loc _ ) = "custom: " <> loc
 
 parseCustomLocation
@@ -117,7 +121,7 @@ parseCustomLocation mdir (ResolverCustom t ()) =
       dir <-
         case mdir of
           Nothing -> throwM $ FilepathInDownloadedSnapshot t
-          Just x -> return x
+          Just x  -> return x
       let rel =
               T.unpack
             $ fromMaybe t
@@ -162,6 +166,9 @@ data SnapName
     deriving (Generic, Typeable, Show, Data, Eq)
 instance Store SnapName
 instance NFData SnapName
+instance Binary SnapName
+deriving instance Generic Day
+instance Binary Day
 
 data BuildPlanTypesException
     = ParseSnapNameException !Text
@@ -186,7 +193,7 @@ instance Show BuildPlanTypesException where
 -- | Convert a 'SnapName' into its short representation, e.g. @lts-2.8@,
 -- @nightly-2015-03-05@.
 renderSnapName :: SnapName -> Text
-renderSnapName (LTS x y) = T.pack $ concat ["lts-", show x, ".", show y]
+renderSnapName (LTS x y)   = T.pack $ concat ["lts-", show x, ".", show y]
 renderSnapName (Nightly d) = T.pack $ "nightly-" ++ show d
 
 -- | Parse the short representation of a 'SnapName'.
@@ -221,22 +228,23 @@ instance FromJSON Snapshots where
       where
         parseNightly t =
             case parseSnapName t of
-                Left e -> fail $ show e
-                Right (LTS _ _) -> fail "Unexpected LTS value"
+                Left e            -> fail $ show e
+                Right (LTS _ _)   -> fail "Unexpected LTS value"
                 Right (Nightly d) -> return d
 
         isLTS = ("lts-" `T.isPrefixOf`)
 
         parseLTS = withText "LTS" $ \t ->
             case parseSnapName t of
-                Left e -> fail $ show e
-                Right (LTS x y) -> return $ IntMap.singleton x y
+                Left e            -> fail $ show e
+                Right (LTS x y)   -> return $ IntMap.singleton x y
                 Right (Nightly _) -> fail "Unexpected nightly value"
 
 newtype SnapshotHash = SnapshotHash { unSnapshotHash :: StaticSHA256 }
     deriving (Generic, Typeable, Show, Data, Eq)
 instance Store SnapshotHash
 instance NFData SnapshotHash
+instance Binary SnapshotHash
 
 -- | Return the first 12 characters of the hash as a B64URL-encoded
 -- string.

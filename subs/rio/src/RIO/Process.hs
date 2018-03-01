@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 -- | Reading from external processes.
 
@@ -65,6 +66,8 @@ import           System.Process.Typed hiding (withProcess, withProcess_)
 import qualified System.Process.PID1 as PID1
 #endif
 
+import Data.Binary
+
 class HasLogFunc env => HasEnvOverride env where
   envOverrideL :: Lens' env EnvOverride
 
@@ -83,10 +86,11 @@ data EnvOverride = EnvOverride
     { eoTextMap :: Map Text Text -- ^ Environment variables as map
     , eoStringList :: [(String, String)] -- ^ Environment variables as association list
     , eoPath :: [FilePath] -- ^ List of directories searched for executables (@PATH@)
-    , eoExeCache :: IORef (Map FilePath (Either ReadProcessException (Path Abs File)))
+    , eoExeCache :: (Map FilePath (Either ReadProcessException (Path Abs File)))
     , eoExeExtensions :: [String] -- ^ @[""]@ on non-Windows systems, @["", ".exe", ".bat"]@ on Windows
     , eoWorkingDir :: !(Maybe (Path Abs Dir))
-    }
+    }deriving(Generic,Typeable)
+instance Binary EnvOverride
 
 workingDirL :: HasEnvOverride env => Lens' env (Maybe (Path Abs Dir))
 workingDirL = envOverrideL.lens eoWorkingDir (\x y -> x { eoWorkingDir = y })
@@ -111,7 +115,7 @@ mkEnvOverride :: MonadIO m
               => Map Text Text
               -> m EnvOverride
 mkEnvOverride tm' = do
-    ref <- liftIO $ newIORef Map.empty
+    let ref = Map.empty
     return EnvOverride
         { eoTextMap = tm
         , eoStringList = map (T.unpack *** T.unpack) $ Map.toList tm
@@ -161,7 +165,7 @@ data ReadProcessException
     = NoPathFound
     | ExecutableNotFound String [FilePath]
     | ExecutableNotFoundAt FilePath
-    deriving Typeable
+    deriving (Typeable, Generic)
 instance Show ReadProcessException where
     show NoPathFound = "PATH not found in EnvOverride"
     show (ExecutableNotFound name path) = concat
@@ -173,6 +177,7 @@ instance Show ReadProcessException where
     show (ExecutableNotFoundAt name) =
         "Did not find executable at specified path: " ++ name
 instance Exception ReadProcessException
+instance Binary ReadProcessException
 
 -- | Provide a 'ProcessConfig' based on the 'EnvOverride' in
 -- scope. Deals with resolving the full path, setting the child
@@ -254,7 +259,7 @@ findExecutable eo name0 | any FP.isPathSeparator name0 = do
                 else testNames names
     testNames names0
 findExecutable eo name = liftIO $ do
-    m <- readIORef $ eoExeCache eo
+    let m = eoExeCache eo
     epath <- case Map.lookup name m of
         Just epath -> return epath
         Nothing -> do
@@ -273,14 +278,14 @@ findExecutable eo name = liftIO $ do
                                 else testFPs fps
                     testFPs fps0
             epath <- loop $ eoPath eo
-            () <- atomicModifyIORef (eoExeCache eo) $ \m' ->
-                (Map.insert name epath m', ())
+          --  () <- atomicModifyIORef (eoExeCache eo) $ \m' ->
+          --      (Map.insert name epath m', ())
             return epath
     return $ either throwM return epath
 
 -- | Reset the executable cache.
 resetExeCache :: MonadIO m => EnvOverride -> m ()
-resetExeCache eo = liftIO (atomicModifyIORef (eoExeCache eo) (const mempty))
+resetExeCache eo = return () --liftIO (atomicModifyIORef (eoExeCache eo) (const mempty))
 
 -- | Load up an 'EnvOverride' from the standard environment.
 getEnvOverride :: MonadIO m => m EnvOverride

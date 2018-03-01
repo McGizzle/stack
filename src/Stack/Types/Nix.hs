@@ -1,51 +1,53 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 -- | Nix types.
 
 module Stack.Types.Nix where
 
-import Data.Aeson.Extended
-import Stack.Prelude
-import Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import           Data.Aeson.Extended
+import           Data.Binary
+import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import           Stack.Prelude
 
 -- | Nix configuration. Parameterize by resolver type to avoid cyclic
 -- dependency.
 data NixOpts = NixOpts
-  {nixEnable   :: !Bool
-  ,nixPureShell :: !Bool
-  ,nixPackages :: ![Text]
+  {nixEnable       :: !Bool
+  ,nixPureShell    :: !Bool
+  ,nixPackages     :: ![Text]
     -- ^ The system packages to be installed in the environment before it runs
-  ,nixInitFile :: !(Maybe FilePath)
+  ,nixInitFile     :: !(Maybe FilePath)
     -- ^ The path of a file containing preconfiguration of the environment (e.g shell.nix)
   ,nixShellOptions :: ![Text]
     -- ^ Options to be given to the nix-shell command line
-  ,nixAddGCRoots :: !Bool
+  ,nixAddGCRoots   :: !Bool
     -- ^ Should we register gc roots so running nix-collect-garbage doesn't remove nix dependencies
   }
-  deriving (Show)
+  deriving (Show, Generic, Typeable)
+instance Binary NixOpts
 
 -- | An uninterpreted representation of nix options.
 -- Configurations may be "cascaded" using mappend (left-biased).
 data NixOptsMonoid = NixOptsMonoid
   {nixMonoidDefaultEnable :: !Any
     -- ^ Should nix-shell be defaulted to enabled (does @nix:@ section exist in the config)?
-  ,nixMonoidEnable :: !(First Bool)
+  ,nixMonoidEnable        :: !(First Bool)
     -- ^ Is using nix-shell enabled?
-  ,nixMonoidPureShell :: !(First Bool)
+  ,nixMonoidPureShell     :: !(First Bool)
     -- ^ Should the nix-shell be pure
-  ,nixMonoidPackages :: !(First [Text])
+  ,nixMonoidPackages      :: !(First [Text])
     -- ^ System packages to use (given to nix-shell)
-  ,nixMonoidInitFile :: !(First FilePath)
+  ,nixMonoidInitFile      :: !(First FilePath)
     -- ^ The path of a file containing preconfiguration of the environment (e.g shell.nix)
-  ,nixMonoidShellOptions :: !(First [Text])
+  ,nixMonoidShellOptions  :: !(First [Text])
     -- ^ Options to be given to the nix-shell command line
-  ,nixMonoidPath :: !(First [Text])
+  ,nixMonoidPath          :: !(First [Text])
     -- ^ Override parts of NIX_PATH (notably 'nixpkgs')
-  ,nixMonoidAddGCRoots :: !(First Bool)
+  ,nixMonoidAddGCRoots    :: !(First Bool)
     -- ^ Should we register gc roots so running nix-collect-garbage doesn't remove nix dependencies
   }
   deriving (Eq, Show, Generic)

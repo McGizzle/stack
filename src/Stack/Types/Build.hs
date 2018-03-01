@@ -1,9 +1,9 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 
@@ -49,7 +49,6 @@ module Stack.Types.Build
     ,precompiledCacheVC)
     where
 
-import           Stack.Prelude
 import qualified Data.ByteString                 as S
 import           Data.Char                       (isSpace)
 import           Data.List.Extra
@@ -67,7 +66,9 @@ import           Distribution.System             (Arch)
 import qualified Distribution.Text               as C
 import           Path                            (mkRelDir, parseRelDir, (</>))
 import           Path.Extra                      (toFilePathNoTrailingSep)
+import           RIO.Process                     (showProcessArgDebug)
 import           Stack.Constants
+import           Stack.Prelude
 import           Stack.Types.BuildPlan
 import           Stack.Types.Compiler
 import           Stack.Types.CompilerBuild
@@ -81,8 +82,9 @@ import           Stack.Types.PackageName
 import           Stack.Types.Version
 import           System.Exit                     (ExitCode (ExitFailure))
 import           System.FilePath                 (pathSeparator)
-import           RIO.Process                     (showProcessArgDebug)
 
+
+import           Data.Binary
 ----------------------------------------------
 -- Exceptions
 data StackBuildException
@@ -169,7 +171,7 @@ instance Show StackBuildException where
                 , compilerBuildSuffix ghcBuild
                 , ") (based on "
                 , case mstack of
-                    Nothing -> "command line arguments"
+                    Nothing    -> "command line arguments"
                     Just stack -> "resolver setting in " ++ toFilePath stack
                 , ").\n"
                 , T.unpack resolution
@@ -212,7 +214,7 @@ instance Show StackBuildException where
                 Just ec -> " exited with: " ++ show ec
             ]
         , return $ case mlogFile of
-            Nothing -> "Logs printed to console"
+            Nothing      -> "Logs printed to console"
             -- TODO Should we load up the full error output and print it here?
             Just logFile -> "Full log available at " ++ toFilePath logFile
         , if S.null bs
@@ -247,7 +249,7 @@ instance Show StackBuildException where
       where
         showFlagSrc :: FlagSource -> String
         showFlagSrc FSCommandLine = " (specified on command line)"
-        showFlagSrc FSStackYaml = " (specified in stack.yaml)"
+        showFlagSrc FSStackYaml   = " (specified in stack.yaml)"
 
         go :: UnusedFlags -> String
         go (UFNoPackage src name) = concat
@@ -387,9 +389,9 @@ buildCacheVC = storeVersionConfig "build-v1" "KVUoviSWWAd7tiRRGeWAvd0UIN4="
 
 -- | Stored on disk to know whether the flags have changed.
 data ConfigCache = ConfigCache
-    { configCacheOpts :: !ConfigureOpts
+    { configCacheOpts       :: !ConfigureOpts
       -- ^ All options used for this package.
-    , configCacheDeps :: !(Set GhcPkgId)
+    , configCacheDeps       :: !(Set GhcPkgId)
       -- ^ The GhcPkgIds of all of the dependencies. Since Cabal doesn't take
       -- the complete GhcPkgId (only a PackageIdentifier) in the configure
       -- options, just using the previous value is insufficient to know if
@@ -398,9 +400,9 @@ data ConfigCache = ConfigCache
       -- ^ The components to be built. It's a bit of a hack to include this in
       -- here, as it's not a configure option (just a build option), but this
       -- is a convenient way to force compilation when the components change.
-    , configCacheHaddock :: !Bool
+    , configCacheHaddock    :: !Bool
       -- ^ Are haddocks to be built?
-    , configCachePkgSrc :: !CachePkgSrc
+    , configCachePkgSrc     :: !CachePkgSrc
     }
     deriving (Generic, Eq, Show, Data, Typeable)
 instance Store ConfigCache
@@ -410,10 +412,11 @@ data CachePkgSrc = CacheSrcUpstream | CacheSrcLocal FilePath
     deriving (Generic, Eq, Show, Data, Typeable)
 instance Store CachePkgSrc
 instance NFData CachePkgSrc
+instance Binary CachePkgSrc
 
 toCachePkgSrc :: PackageSource -> CachePkgSrc
 toCachePkgSrc (PSFiles lp _) = CacheSrcLocal (toFilePath (lpDir lp))
-toCachePkgSrc PSIndex{} = CacheSrcUpstream
+toCachePkgSrc PSIndex{}      = CacheSrcUpstream
 
 configCacheVC :: VersionConfig ConfigCache
 configCacheVC = storeVersionConfig "config-v3" "z7N_NxX7Gbz41Gi9AGEa1zoLE-4="
@@ -445,68 +448,75 @@ data Task = Task
     -- ^ Is the build type of this package Configure. Check out
     -- ensureConfigureScript in Stack.Build.Execute for the motivation
     }
-    deriving Show
+    deriving (Show,Generic,Typeable)
+instance Binary Task
 
 -- | Given the IDs of any missing packages, produce the configure options
 data TaskConfigOpts = TaskConfigOpts
     { tcoMissing :: !(Set PackageIdentifier)
       -- ^ Dependencies for which we don't yet have an GhcPkgId
-    , tcoOpts    :: !(Map PackageIdentifier GhcPkgId -> ConfigureOpts)
+--    , tcoOpts    :: !(Map PackageIdentifier GhcPkgId -> ConfigureOpts)
+    , tcoOpts    :: !ConfigureOpts
       -- ^ Produce the list of options given the missing @GhcPkgId@s
     }
+    deriving(Generic,Typeable)
+instance Binary TaskConfigOpts
 instance Show TaskConfigOpts where
-    show (TaskConfigOpts missing f) = concat
+      show (TaskConfigOpts missing f) = concat
         [ "Missing: "
         , show missing
         , ". Without those: "
-        , show $ f Map.empty
         ]
+
 
 -- | The type of a task, either building local code or something from the
 -- package index (upstream)
 data TaskType = TTFiles LocalPackage InstallLocation
-              | TTIndex Package InstallLocation PackageIdentifierRevision -- FIXME major overhaul for PackageLocation?
-    deriving Show
+              | TTIndex TPackage InstallLocation PackageIdentifierRevision -- FIXME major overhaul for PackageLocation?
+    deriving (Show, Generic, Typeable)
+
+instance Binary TaskType
 
 ttPackageLocation :: TaskType -> PackageLocationIndex FilePath
-ttPackageLocation (TTFiles lp _) = PLOther (lpLocation lp)
+ttPackageLocation (TTFiles lp _)    = PLOther (lpLocation lp)
 ttPackageLocation (TTIndex _ _ pir) = PLIndex pir
 
 taskIsTarget :: Task -> Bool
 taskIsTarget t =
     case taskType t of
         TTFiles lp _ -> lpWanted lp
-        _ -> False
+        _            -> False
 
 taskLocation :: Task -> InstallLocation
 taskLocation task =
     case taskType task of
-        TTFiles _ loc -> loc
+        TTFiles _ loc   -> loc
         TTIndex _ loc _ -> loc
 
 -- | A complete plan of what needs to be built and how to do it
 data Plan = Plan
-    { planTasks :: !(Map PackageName Task)
-    , planFinals :: !(Map PackageName Task)
+    { planTasks           :: !(Map PackageName Task)
+    , planFinals          :: !(Map PackageName Task)
     -- ^ Final actions to be taken (test, benchmark, etc)
     , planUnregisterLocal :: !(Map GhcPkgId (PackageIdentifier, Text))
     -- ^ Text is reason we're unregistering, for display only
-    , planInstallExes :: !(Map Text InstallLocation)
+    , planInstallExes     :: !(Map Text InstallLocation)
     -- ^ Executables that should be installed after successful building
     }
     deriving Show
 
 -- | Basic information used to calculate what the configure options are
 data BaseConfigOpts = BaseConfigOpts
-    { bcoSnapDB :: !(Path Abs Dir)
-    , bcoLocalDB :: !(Path Abs Dir)
-    , bcoSnapInstallRoot :: !(Path Abs Dir)
+    { bcoSnapDB           :: !(Path Abs Dir)
+    , bcoLocalDB          :: !(Path Abs Dir)
+    , bcoSnapInstallRoot  :: !(Path Abs Dir)
     , bcoLocalInstallRoot :: !(Path Abs Dir)
-    , bcoBuildOpts :: !BuildOpts
-    , bcoBuildOptsCLI :: !BuildOptsCLI
-    , bcoExtraDBs :: ![Path Abs Dir]
+    , bcoBuildOpts        :: !BuildOpts
+    , bcoBuildOptsCLI     :: !BuildOptsCLI
+    , bcoExtraDBs         :: ![Path Abs Dir]
     }
-    deriving Show
+    deriving (Show, Generic, Typeable)
+instance Binary BaseConfigOpts
 
 -- | Render a @BaseConfigOpts@ to an actual list of options
 configureOpts :: EnvConfig
@@ -553,7 +563,7 @@ configureOptsDirs :: BaseConfigOpts
 configureOptsDirs bco loc package = concat
     [ ["--user", "--package-db=clear", "--package-db=global"]
     , map (("--package-db=" ++) . toFilePathNoTrailingSep) $ case loc of
-        Snap -> bcoExtraDBs bco ++ [bcoSnapDB bco]
+        Snap  -> bcoExtraDBs bco ++ [bcoSnapDB bco]
         Local -> bcoExtraDBs bco ++ [bcoSnapDB bco] ++ [bcoLocalDB bco]
     , [ "--libdir=" ++ toFilePathNoTrailingSep (installRoot </> $(mkRelDir "lib"))
       , "--bindir=" ++ toFilePathNoTrailingSep (installRoot </> bindirSuffix)
@@ -567,11 +577,11 @@ configureOptsDirs bco loc package = concat
   where
     installRoot =
         case loc of
-            Snap -> bcoSnapInstallRoot bco
+            Snap  -> bcoSnapInstallRoot bco
             Local -> bcoLocalInstallRoot bco
     docDir =
         case pkgVerDir of
-            Nothing -> installRoot </> docDirSuffix
+            Nothing  -> installRoot </> docDirSuffix
             Just dir -> installRoot </> docDirSuffix </> dir
     pkgVerDir =
         parseRelDir (packageIdentifierString (PackageIdentifier (packageName package)
@@ -660,7 +670,7 @@ modTime x =
 
 -- | Configure options to be sent to Setup.hs configure
 data ConfigureOpts = ConfigureOpts
-    { coDirs :: ![String]
+    { coDirs   :: ![String]
     -- ^ Options related to various paths. We separate these out since they do
     -- not have an impact on the contents of the compiled binary for checking
     -- if we can use an existing precompiled cache.
@@ -669,6 +679,7 @@ data ConfigureOpts = ConfigureOpts
     deriving (Show, Eq, Generic, Data, Typeable)
 instance Store ConfigureOpts
 instance NFData ConfigureOpts
+instance Binary ConfigureOpts
 
 -- | Information on a compiled package: the library conf file (if relevant),
 -- and all of the executable paths.

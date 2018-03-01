@@ -1,7 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -17,18 +17,19 @@ module Stack.Build.Haddock
     , shouldHaddockDeps
     ) where
 
-import           Stack.Prelude
-import qualified Data.Foldable as F
-import qualified Data.HashSet as HS
-import           Data.List.Extra (nubOrd)
-import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
-import qualified Data.Text as T
-import           Data.Time (UTCTime)
+import qualified Data.Foldable                 as F
+import qualified Data.HashSet                  as HS
+import           Data.List.Extra               (nubOrd)
+import qualified Data.Map.Strict               as Map
+import qualified Data.Set                      as Set
+import qualified Data.Text                     as T
+import           Data.Time                     (UTCTime)
 import           Path
 import           Path.Extra
 import           Path.IO
+import           RIO.Process
 import           Stack.PackageDump
+import           Stack.Prelude
 import           Stack.PrettyPrint
 import           Stack.Types.Build
 import           Stack.Types.Compiler
@@ -38,9 +39,8 @@ import           Stack.Types.Package
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Runner
-import qualified System.FilePath as FP
-import           RIO.Process
-import           Web.Browser (openBrowser)
+import qualified System.FilePath               as FP
+import           Web.Browser                   (openBrowser)
 
 openHaddocksInBrowser
     :: HasRunner env
@@ -69,7 +69,7 @@ openHaddocksInBrowser bco pkgLocations buildTargets = do
                 pkgRelDir <- (parseRelDir . packageIdentifierString) pkgId
                 let docLocation =
                         case iloc of
-                            Snap -> snapDocDir bco
+                            Snap  -> snapDocDir bco
                             Local -> localDocDir bco
                 let docFile = haddockIndexFile (docLocation </> pkgRelDir)
                 exists <- doesFileExist docFile
@@ -161,7 +161,7 @@ generateDepsHaddockIndex wc bco globalDumpPkgs snapshotDumpPkgs localDumpPkgs lo
                 (ghcPkgId:_) ->
                     let deps =
                             case lookupDumpPackage ghcPkgId allDumpPkgs of
-                                Nothing -> HS.empty
+                                Nothing    -> HS.empty
                                 Just pkgDP -> HS.fromList (dpDepends pkgDP)
                         deps' = deps `HS.difference` checked
                         todo' = HS.delete ghcPkgId (deps' `HS.union` todo)

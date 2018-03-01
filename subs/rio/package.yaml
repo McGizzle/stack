@@ -16,8 +16,8 @@ dependencies:
 - microlens # FIXME perhaps drop
 - microlens-mtl # FIXME perhaps drop
 - mtl
-- path # FIXME drop
 - path-io # FIXME drop
+- path
 - store # FIXME drop
 - text
 - time

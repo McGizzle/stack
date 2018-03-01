@@ -1,11 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DeriveGeneric,DeriveAnyClass #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 -- | Versions for packages.
 
@@ -35,26 +36,26 @@ module Stack.Types.Version
   ,stackMinorVersion)
   where
 
-import           Stack.Prelude hiding (Vector)
 import           Data.Aeson.Extended
 import           Data.Attoparsec.Text
-import           Data.Hashable (Hashable (..))
+import           Data.Hashable              (Hashable (..))
 import           Data.List
-import qualified Data.Set as Set
-import qualified Data.Text as T
+import qualified Data.Set                   as Set
+import qualified Data.Text                  as T
+import           Stack.Prelude              hiding (Vector)
 
-import           Data.Vector.Unboxed (Vector)
-import qualified Data.Vector.Unboxed as V
-import Data.Vector.Binary 
-import           Distribution.Text (disp)
-import qualified Distribution.Version as Cabal
+import           Data.Vector.Binary
+import           Data.Vector.Unboxed        (Vector)
+import qualified Data.Vector.Unboxed        as V
+import           Distribution.Text          (disp)
+import qualified Distribution.Version       as Cabal
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Syntax
-import qualified Paths_stack as Meta
-import           Text.PrettyPrint (render)
+import qualified Paths_stack                as Meta
+import           Text.PrettyPrint           (render)
 
-import Data.Binary
-import GHC.Generics (Generic)
+import           Data.Binary
+import           GHC.Generics               (Generic)
 -- | A parse fail.
 newtype VersionParseFail =
   VersionParseFail Text
@@ -202,7 +203,9 @@ data VersionCheck
     = MatchMinor
     | MatchExact
     | NewerMinor
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Generic, Typeable)
+
+instance Binary VersionCheck
 instance ToJSON VersionCheck where
     toJSON MatchMinor = String "match-minor"
     toJSON MatchExact = String "match-exact"
@@ -227,9 +230,9 @@ checkVersion check (Version wanted) (Version actual) =
     matching = V.zipWith (==) wanted actual
     newerMinor =
         case (wanted V.!? 2, actual V.!? 2) of
-            (Nothing, _) -> True
+            (Nothing, _)      -> True
             (Just _, Nothing) -> False
-            (Just w, Just a) -> a >= w
+            (Just w, Just a)  -> a >= w
 
 -- | Get minor version (excludes any patchlevel)
 minorVersion :: Version -> Version

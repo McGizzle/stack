@@ -1,102 +1,105 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
 
 -- | Docker types.
 
 module Stack.Types.Docker where
 
-import Stack.Prelude
-import Data.Aeson.Extended
-import Data.List (intercalate)
-import qualified Data.Text as T
-import Distribution.System (Platform(..), OS(..), Arch(..))
-import Distribution.Text (simpleParse, display)
-import Distribution.Version (anyVersion)
-import Generics.Deriving.Monoid (mappenddefault, memptydefault)
-import Path
-import Stack.Constants
-import Stack.Types.Version
-import Text.Read (Read (..))
+import           Data.Aeson.Extended
+import           Data.List                (intercalate)
+import qualified Data.Text                as T
+import           Distribution.System      (Arch (..), OS (..), Platform (..))
+import           Distribution.Text        (display, simpleParse)
+import           Distribution.Version     (anyVersion)
+import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
+import           Path
+import           Stack.Constants
+import           Stack.Prelude
+import           Stack.Types.Version
+import           Text.Read                (Read (..))
+
+import           Data.Binary
 
 -- | Docker configuration.
 data DockerOpts = DockerOpts
-  {dockerEnable :: !Bool
+  {dockerEnable               :: !Bool
     -- ^ Is using Docker enabled?
-  ,dockerImage :: !String
+  ,dockerImage                :: !String
     -- ^ Exact Docker image tag or ID.  Overrides docker-repo-*/tag.
-  ,dockerRegistryLogin :: !Bool
+  ,dockerRegistryLogin        :: !Bool
     -- ^ Does registry require login for pulls?
-  ,dockerRegistryUsername :: !(Maybe String)
+  ,dockerRegistryUsername     :: !(Maybe String)
     -- ^ Optional username for Docker registry.
-  ,dockerRegistryPassword :: !(Maybe String)
+  ,dockerRegistryPassword     :: !(Maybe String)
     -- ^ Optional password for Docker registry.
-  ,dockerAutoPull :: !Bool
+  ,dockerAutoPull             :: !Bool
     -- ^ Automatically pull new images.
-  ,dockerDetach :: !Bool
+  ,dockerDetach               :: !Bool
     -- ^ Whether to run a detached container
-  ,dockerPersist :: !Bool
+  ,dockerPersist              :: !Bool
     -- ^ Create a persistent container (don't remove it when finished).  Implied by
     -- `dockerDetach`.
-  ,dockerContainerName :: !(Maybe String)
+  ,dockerContainerName        :: !(Maybe String)
     -- ^ Container name to use, only makes sense from command-line with `dockerPersist`
     -- or `dockerDetach`.
-  ,dockerRunArgs :: ![String]
+  ,dockerRunArgs              :: ![String]
     -- ^ Arguments to pass directly to @docker run@.
-  ,dockerMount :: ![Mount]
+  ,dockerMount                :: ![Mount]
     -- ^ Volumes to mount in the container.
-  ,dockerEnv :: ![String]
+  ,dockerEnv                  :: ![String]
     -- ^ Environment variables to set in the container.
-  ,dockerDatabasePath :: !(Path Abs File)
+  ,dockerDatabasePath         :: !(Path Abs File)
     -- ^ Location of image usage database.
-  ,dockerStackExe :: !(Maybe DockerStackExe)
+  ,dockerStackExe             :: !(Maybe DockerStackExe)
     -- ^ Location of container-compatible stack executable
-  ,dockerSetUser :: !(Maybe Bool)
+  ,dockerSetUser              :: !(Maybe Bool)
    -- ^ Set in-container user to match host's
   ,dockerRequireDockerVersion :: !VersionRange
    -- ^ Require a version of Docker within this range.
   }
-  deriving (Show)
+  deriving (Show, Generic, Typeable)
+instance Binary DockerOpts
 
 -- | An uninterpreted representation of docker options.
 -- Configurations may be "cascaded" using mappend (left-biased).
 data DockerOptsMonoid = DockerOptsMonoid
-  {dockerMonoidDefaultEnable :: !Any
+  {dockerMonoidDefaultEnable        :: !Any
     -- ^ Should Docker be defaulted to enabled (does @docker:@ section exist in the config)?
-  ,dockerMonoidEnable :: !(First Bool)
+  ,dockerMonoidEnable               :: !(First Bool)
     -- ^ Is using Docker enabled?
-  ,dockerMonoidRepoOrImage :: !(First DockerMonoidRepoOrImage)
+  ,dockerMonoidRepoOrImage          :: !(First DockerMonoidRepoOrImage)
     -- ^ Docker repository name (e.g. @fpco/stack-build@ or @fpco/stack-full:lts-2.8@)
-  ,dockerMonoidRegistryLogin :: !(First Bool)
+  ,dockerMonoidRegistryLogin        :: !(First Bool)
     -- ^ Does registry require login for pulls?
-  ,dockerMonoidRegistryUsername :: !(First String)
+  ,dockerMonoidRegistryUsername     :: !(First String)
     -- ^ Optional username for Docker registry.
-  ,dockerMonoidRegistryPassword :: !(First String)
+  ,dockerMonoidRegistryPassword     :: !(First String)
     -- ^ Optional password for Docker registry.
-  ,dockerMonoidAutoPull :: !(First Bool)
+  ,dockerMonoidAutoPull             :: !(First Bool)
     -- ^ Automatically pull new images.
-  ,dockerMonoidDetach :: !(First Bool)
+  ,dockerMonoidDetach               :: !(First Bool)
     -- ^ Whether to run a detached container
-  ,dockerMonoidPersist :: !(First Bool)
+  ,dockerMonoidPersist              :: !(First Bool)
     -- ^ Create a persistent container (don't remove it when finished).  Implied by
     -- `dockerDetach`.
-  ,dockerMonoidContainerName :: !(First String)
+  ,dockerMonoidContainerName        :: !(First String)
     -- ^ Container name to use, only makes sense from command-line with `dockerPersist`
     -- or `dockerDetach`.
-  ,dockerMonoidRunArgs :: ![String]
+  ,dockerMonoidRunArgs              :: ![String]
     -- ^ Arguments to pass directly to @docker run@
-  ,dockerMonoidMount :: ![Mount]
+  ,dockerMonoidMount                :: ![Mount]
     -- ^ Volumes to mount in the container
-  ,dockerMonoidEnv :: ![String]
+  ,dockerMonoidEnv                  :: ![String]
     -- ^ Environment variables to set in the container
-  ,dockerMonoidDatabasePath :: !(First (Path Abs File))
+  ,dockerMonoidDatabasePath         :: !(First (Path Abs File))
     -- ^ Location of image usage database.
-  ,dockerMonoidStackExe :: !(First DockerStackExe)
+  ,dockerMonoidStackExe             :: !(First DockerStackExe)
     -- ^ Location of container-compatible stack executable
-  ,dockerMonoidSetUser :: !(First Bool)
+  ,dockerMonoidSetUser              :: !(First Bool)
    -- ^ Set in-container user to match host's
   ,dockerMonoidRequireDockerVersion :: !IntersectingVersionRange
   -- ^ See: 'dockerRequireDockerVersion'
@@ -142,14 +145,15 @@ data DockerStackExe
     | DockerStackExeHost  -- ^ Host's `stack` (linux-x86_64 only)
     | DockerStackExeImage  -- ^ Docker image's `stack` (versions must match)
     | DockerStackExePath (Path Abs File) -- ^ Executable at given path
-    deriving (Show)
+    deriving (Show, Generic, Typeable)
+instance Binary DockerStackExe
 
 instance FromJSON DockerStackExe where
     parseJSON a = do
         s <- parseJSON a
         case parseDockerStackExe s of
             Right dse -> return dse
-            Left e -> fail (show e)
+            Left e    -> fail (show e)
 
 -- | Parse 'DockerStackExe'.
 parseDockerStackExe :: (MonadThrow m) => String -> m DockerStackExe
@@ -158,12 +162,13 @@ parseDockerStackExe t
     | t == dockerStackExeHostVal = return DockerStackExeHost
     | t == dockerStackExeImageVal = return DockerStackExeImage
     | otherwise = case parseAbsFile t of
-        Just p -> return (DockerStackExePath p)
+        Just p  -> return (DockerStackExePath p)
         Nothing -> throwM (DockerStackExeParseException t)
 
 -- | Docker volume mount.
 data Mount = Mount String String
-
+        deriving(Generic, Typeable)
+instance Binary Mount
 -- | For optparse-applicative.
 instance Read Mount where
   readsPrec _ s =
@@ -184,7 +189,7 @@ instance FromJSON Mount where
     s <- parseJSON v
     case readMaybe s of
       Nothing -> fail $ "Mount read failed: " ++ s
-      Just x -> return x
+      Just x  -> return x
 
 -- | Options for Docker repository or image.
 data DockerMonoidRepoOrImage

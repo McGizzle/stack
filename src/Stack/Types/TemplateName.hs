@@ -1,17 +1,18 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 -- | Template name handling.
 
 module Stack.Types.TemplateName where
 
-import           Data.Aeson.Extended (FromJSON, withText, parseJSON)
-import           Data.Aeson.Types (typeMismatch)
-import qualified Data.Text as T
-import           Data.Yaml (Value(Object), (.:?))
+import           Data.Aeson.Extended (FromJSON, parseJSON, withText)
+import           Data.Aeson.Types    (typeMismatch)
+import qualified Data.Text           as T
+import           Data.Yaml           (Value (Object), (.:?))
 import           Language.Haskell.TH
 import           Network.HTTP.Client (parseRequest)
 import qualified Options.Applicative as O
@@ -19,9 +20,13 @@ import           Path
 import           Path.Internal
 import           Stack.Prelude
 
+import           Data.Binary
+
 -- | A template name.
 data TemplateName = TemplateName !Text !TemplatePath
-  deriving (Ord,Eq,Show)
+  deriving (Ord,Eq,Show,Generic,Typeable)
+
+instance Binary TemplateName
 
 data TemplatePath = AbsPath (Path Abs File)
                   -- ^ an absolute path on the filesystem
@@ -30,7 +35,8 @@ data TemplatePath = AbsPath (Path Abs File)
                   -- the template repository
                   | UrlPath String
                   -- ^ a full URL
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, Typeable)
+instance Binary TemplatePath
 
 instance FromJSON TemplateName where
     parseJSON = withText "TemplateName" $
@@ -97,7 +103,7 @@ mkTemplateName s =
                       case p of
                           AbsPath (Path fp) -> [|AbsPath (Path fp)|]
                           RelPath (Path fp) -> [|RelPath (Path fp)|]
-                          UrlPath fp -> [|UrlPath fp|]
+                          UrlPath fp        -> [|UrlPath fp|]
 
 -- | Get a text representation of the template name.
 templateName :: TemplateName -> Text

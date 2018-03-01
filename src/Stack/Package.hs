@@ -37,7 +37,8 @@ module Stack.Package
   ,cabalFilePackageId
   ,gpdPackageIdentifier
   ,gpdPackageName
-  ,gpdVersion)
+  ,gpdVersion
+  ,pkgFiles)
   where
 
 import qualified Data.ByteString as BS
@@ -268,7 +269,7 @@ packageFromPackageDescription packageConfig pkgFlags (PackageDescriptionPair pkg
     , packageVersion = fromCabalVersion (pkgVersion pkgId)
     , packageLicense = license pkg
     , packageDeps = deps
-    , packageFiles = pkgFiles
+    , packageFiles = pkg
     , packageTools = packageDescTools pkg
     , packageGhcOptions = packageConfigGhcOptions packageConfig
     , packageFlags = packageConfigFlags packageConfig
@@ -303,12 +304,6 @@ packageFromPackageDescription packageConfig pkgFlags (PackageDescriptionPair pkg
                                     , buildable (buildInfo biBuildInfo)]
     -- This is an action used to collect info needed for "stack ghci".
     -- This info isn't usually needed, so computation of it is deferred.
-    , packageOpts = GetPackageOpts $
-      \sourceMap installedMap omitPkgs addPkgs cabalfp ->
-           do (componentsModules,componentFiles,_,_) <- getPackageFiles pkgFiles cabalfp
-              componentsOpts <-
-                  generatePkgDescOpts sourceMap installedMap omitPkgs addPkgs cabalfp pkg componentFiles
-              return (componentsModules,componentFiles,componentsOpts)
     , packageHasExposedModules = maybe
           False
           (not . null . exposedModules)
@@ -376,6 +371,41 @@ packageFromPackageDescription packageConfig pkgFlags (PackageDescriptionPair pkg
     -- Is the package dependency mentioned here me: either the package
     -- name itself, or the name of one of the sub libraries
     isMe name' = name' == name || packageNameText name' `S.member` extraLibNames
+
+
+--- pkgFiles Function -------------------------------------------------------
+pkgFiles pkg cabalfp = debugBracket ("getPackageFiles" <+> display cabalfp) $ do
+             let pkgDir = parent cabalfp
+             distDir <- distDirFromDir pkgDir
+             env <- view envConfigL
+             (componentModules,componentFiles,dataFiles',warnings) <-
+                 runRIO
+                     (Ctx cabalfp (buildDir distDir) env)
+                     (packageDescModulesAndFiles pkg)
+             setupFiles <-
+                 if buildType pkg `elem` [Nothing, Just Custom]
+                 then do
+                     let setupHsPath = pkgDir </> $(mkRelFile "Setup.hs")
+                         setupLhsPath = pkgDir </> $(mkRelFile "Setup.lhs")
+                     setupHsExists <- doesFileExist setupHsPath
+                     if setupHsExists then return (S.singleton setupHsPath) else do
+                         setupLhsExists <- doesFileExist setupLhsPath
+                         if setupLhsExists then return (S.singleton setupLhsPath) else return S.empty
+                 else return S.empty
+             buildFiles <- liftM (S.insert cabalfp . S.union setupFiles) $ do
+                 let hpackPath = pkgDir </> $(mkRelFile Hpack.packageConfig)
+                 hpackExists <- doesFileExist hpackPath
+                 return $ if hpackExists then S.singleton hpackPath else S.empty
+             return (componentModules, componentFiles, buildFiles <> dataFiles', warnings)
+   
+packageOpts pkg sourceMap installedMap omitPkgs addPkgs cabalfp = do
+        (componentsModules,componentFiles,_,_) <- pkgFiles pkg cabalfp
+        componentsOpts <- generatePkgDescOpts sourceMap installedMap omitPkgs addPkgs cabalfp pkg componentFiles
+        return (componentsModules,componentFiles,componentsOpts)
+----------------------------------------------------------------------------------------------------------------------------
+
+
+
 
 -- | Generate GHC options for the package's components, and a list of
 -- options which apply generally to the package, not one specific

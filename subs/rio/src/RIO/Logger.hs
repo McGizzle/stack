@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveGeneric #-}
 module RIO.Logger
   ( LogLevel (..)
   , LogSource
@@ -26,8 +27,11 @@ import Lens.Micro (Getting, to)
 import Lens.Micro.Mtl (view)
 import GHC.Stack (HasCallStack, CallStack)
 
+import Data.Binary
+
 data LogLevel = LevelDebug | LevelInfo | LevelWarn | LevelError | LevelOther !Text
-    deriving (Eq, Show, Read, Ord)
+        deriving (Eq, Show, Read, Ord, Generic, Typeable)
+instance Binary LogLevel
 
 type LogSource = Text
 type LogStr = Text

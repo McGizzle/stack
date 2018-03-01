@@ -1,20 +1,21 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TypeFamilies       #-}
 
 module Stack.Types.Compiler where
 
 import           Data.Aeson
 import           Data.Data
-import qualified Data.Text as T
+import qualified Data.Text           as T
 import           Stack.Prelude
 import           Stack.Types.Version
 
+import           Data.Binary
 -- | Variety of compiler to use.
 data WhichCompiler
     = Ghc
@@ -26,6 +27,8 @@ data WhichCompiler
 -- request), or the actual installed GHC. Depending on the matching
 -- requirements, these values could be different.
 data CVType = CVWanted | CVActual
+        deriving(Typeable, Generic)
+instance Binary CVType
 
 -- | Specifies a compiler and its version number(s).
 --
@@ -49,13 +52,14 @@ instance FromJSONKey (CompilerVersion a) where
         case parseCompilerVersion k of
             Nothing -> fail $ "Failed to parse CompilerVersion " ++ T.unpack k
             Just parsed -> return parsed
+instance Binary (CompilerVersion a)
 
 actualToWanted :: CompilerVersion 'CVActual -> CompilerVersion 'CVWanted
-actualToWanted (GhcVersion x) = GhcVersion x
+actualToWanted (GhcVersion x)     = GhcVersion x
 actualToWanted (GhcjsVersion x y) = GhcjsVersion x y
 
 wantedToActual :: CompilerVersion 'CVWanted -> CompilerVersion 'CVActual
-wantedToActual (GhcVersion x) = GhcVersion x
+wantedToActual (GhcVersion x)     = GhcVersion x
 wantedToActual (GhcjsVersion x y) = GhcjsVersion x y
 
 parseCompilerVersion :: T.Text -> Maybe (CompilerVersion a)
@@ -81,7 +85,7 @@ compilerVersionString :: CompilerVersion a -> String
 compilerVersionString = T.unpack . compilerVersionText
 
 whichCompiler :: CompilerVersion a -> WhichCompiler
-whichCompiler GhcVersion {} = Ghc
+whichCompiler GhcVersion {}   = Ghc
 whichCompiler GhcjsVersion {} = Ghcjs
 
 isWantedCompiler :: VersionCheck -> CompilerVersion 'CVWanted -> CompilerVersion 'CVActual -> Bool
@@ -92,13 +96,13 @@ isWantedCompiler check (GhcjsVersion wanted wantedGhc) (GhcjsVersion actual actu
 isWantedCompiler _ _ _ = False
 
 getGhcVersion :: CompilerVersion a -> Version
-getGhcVersion (GhcVersion v) = v
+getGhcVersion (GhcVersion v)     = v
 getGhcVersion (GhcjsVersion _ v) = v
 
 compilerExeName :: WhichCompiler -> String
-compilerExeName Ghc = "ghc"
+compilerExeName Ghc   = "ghc"
 compilerExeName Ghcjs = "ghcjs"
 
 haddockExeName :: WhichCompiler -> String
-haddockExeName Ghc = "haddock"
+haddockExeName Ghc   = "haddock"
 haddockExeName Ghcjs = "haddock-ghcjs"

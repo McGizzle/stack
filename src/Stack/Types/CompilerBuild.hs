@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 module Stack.Types.CompilerBuild
   (CompilerBuild(..)
@@ -6,14 +7,17 @@ module Stack.Types.CompilerBuild
   ,parseCompilerBuild
   ) where
 
-import           Stack.Prelude
 import           Data.Aeson.Extended (FromJSON, parseJSON, withText)
-import           Data.Text as T
+import           Data.Text           as T
+import           Stack.Prelude
+
+import           Data.Binary
 
 data CompilerBuild
     = CompilerBuildStandard
     | CompilerBuildSpecialized String
-    deriving (Show)
+    deriving (Show, Generic, Typeable)
+instance Binary CompilerBuild
 
 instance FromJSON CompilerBuild where
     -- Strange structuring is to give consistent error messages
@@ -24,16 +28,16 @@ instance FromJSON CompilerBuild where
 
 -- | Descriptive name for compiler build
 compilerBuildName :: CompilerBuild -> String
-compilerBuildName CompilerBuildStandard = "standard"
+compilerBuildName CompilerBuildStandard        = "standard"
 compilerBuildName (CompilerBuildSpecialized s) = s
 
 -- | Suffix to use for filenames/directories constructed with compiler build
 compilerBuildSuffix :: CompilerBuild -> String
-compilerBuildSuffix CompilerBuildStandard = ""
+compilerBuildSuffix CompilerBuildStandard        = ""
 compilerBuildSuffix (CompilerBuildSpecialized s) = '-' : s
 
 -- | Parse compiler build from a String.
 parseCompilerBuild :: (MonadThrow m) => String -> m CompilerBuild
-parseCompilerBuild "" = return CompilerBuildStandard
+parseCompilerBuild ""         = return CompilerBuildStandard
 parseCompilerBuild "standard" = return CompilerBuildStandard
-parseCompilerBuild name = return (CompilerBuildSpecialized name)
+parseCompilerBuild name       = return (CompilerBuildSpecialized name)

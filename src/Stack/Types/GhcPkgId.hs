@@ -1,6 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
 
 -- | A ghc-pkg id.
 
@@ -11,10 +11,12 @@ module Stack.Types.GhcPkgId
   ,ghcPkgIdString)
   where
 
-import           Stack.Prelude
 import           Data.Aeson.Extended
 import           Data.Attoparsec.Text
-import qualified Data.Text as T
+import qualified Data.Text            as T
+import           Stack.Prelude
+
+import           Data.Binary
 
 -- | A parse fail.
 newtype GhcPkgIdParseFail
@@ -27,6 +29,7 @@ instance Exception GhcPkgIdParseFail
 -- | A ghc-pkg package identifier.
 newtype GhcPkgId = GhcPkgId Text
   deriving (Eq,Ord,Data,Typeable,Generic)
+instance Binary GhcPkgId
 
 instance Hashable GhcPkgId
 instance NFData GhcPkgId
@@ -38,7 +41,7 @@ instance Show GhcPkgId where
 instance FromJSON GhcPkgId where
   parseJSON = withText "GhcPkgId" $ \t ->
     case parseGhcPkgId t of
-      Left e -> fail $ show (e, t)
+      Left e  -> fail $ show (e, t)
       Right x -> return x
 
 instance ToJSON GhcPkgId where

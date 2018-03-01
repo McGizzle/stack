@@ -34,6 +34,7 @@ ghc-options:
 - -fwarn-incomplete-uni-patterns
 - -fwarn-incomplete-record-updates
 dependencies:
+- path
 - Cabal
 - aeson
 - annotated-wl-pprint
@@ -81,7 +82,6 @@ dependencies:
 - network-uri
 - open-browser
 - optparse-applicative
-- path
 - path-io
 - persistent
 - persistent-sqlite
@@ -141,9 +141,10 @@ library:
   ghc-options:
   - -fwarn-identities
   exposed-modules:
+  - Distributed.Temp
+  - Distributed.Build.Types
   - Control.Concurrent.Execute
   - Control.Concurrent.Types
-  - Control.Concurrent.Distributed
   - Data.Aeson.Extended
   - Data.Attoparsec.Args
   - Data.Attoparsec.Combinators

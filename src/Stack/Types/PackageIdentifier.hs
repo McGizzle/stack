@@ -1,10 +1,11 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# OPTIONS -fno-warn-unused-do-bind #-}
 
 -- | Package identifier (name-version).
@@ -38,23 +39,23 @@ module Stack.Types.PackageIdentifier
   )
   where
 
-import           Stack.Prelude
-import           Crypto.Hash.Conduit (hashFile)
-import           Crypto.Hash as Hash (hashlazy, Digest, SHA256)
+import           Crypto.Hash             as Hash (Digest, SHA256, hashlazy)
+import           Crypto.Hash.Conduit     (hashFile)
 import           Data.Aeson.Extended
-import           Data.Attoparsec.Text as A
+import           Data.Attoparsec.Text    as A
 import qualified Data.ByteArray
 import qualified Data.ByteArray.Encoding as Mem
-import qualified Data.ByteString.Lazy as L
-import qualified Data.Text as T
-import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
-import qualified Distribution.Package as C
+import qualified Data.ByteString.Lazy    as L
+import qualified Data.Text               as T
+import           Data.Text.Encoding      (decodeUtf8, encodeUtf8)
+import qualified Distribution.Package    as C
+import           Stack.Prelude
 import           Stack.StaticBytes
 import           Stack.Types.PackageName
 import           Stack.Types.Version
 
-import Data.Binary
-import GHC.Generics (Generic)
+import           Data.Binary
+import           GHC.Generics            (Generic)
 -- | A parse fail.
 data PackageIdentifierParseFail
   = PackageIdentifierParseFail Text
@@ -90,15 +91,17 @@ instance ToJSON PackageIdentifier where
 instance FromJSON PackageIdentifier where
   parseJSON = withText "PackageIdentifier" $ \t ->
     case parsePackageIdentifier t of
-      Left e -> fail $ show (e, t)
+      Left e  -> fail $ show (e, t)
       Right x -> return x
 
 -- | A 'PackageIdentifier' combined with optionally specified Hackage
 -- cabal file revision.
 data PackageIdentifierRevision = PackageIdentifierRevision
-  { pirIdent :: !PackageIdentifier
+  { pirIdent    :: !PackageIdentifier
   , pirRevision :: !CabalFileInfo
   } deriving (Eq,Ord,Generic,Data,Typeable)
+
+instance Binary PackageIdentifierRevision
 
 instance NFData PackageIdentifierRevision where
   rnf (PackageIdentifierRevision !i !c) =
@@ -115,17 +118,23 @@ instance ToJSON PackageIdentifierRevision where
 instance FromJSON PackageIdentifierRevision where
   parseJSON = withText "PackageIdentifierRevision" $ \t ->
     case parsePackageIdentifierRevision t of
-      Left e -> fail $ show (e, t)
+      Left e  -> fail $ show (e, t)
       Right x -> return x
 
 -- | A cryptographic hash of a Cabal file.
 newtype CabalHash = CabalHash { unCabalHash :: StaticSHA256 }
     deriving (Generic, Show, Eq, NFData, Data, Typeable, Ord, Store, Hashable)
 
+instance Binary CabalHash
 -- | A SHA256 hash, stored in a static size for more efficient
 -- serialization with store.
 newtype StaticSHA256 = StaticSHA256 Bytes32
     deriving (Generic, Show, Eq, NFData, Data, Typeable, Ord, Hashable, Store)
+
+instance Binary Bytes32
+instance Binary Bytes16
+instance Binary Bytes8
+instance Binary StaticSHA256
 
 -- | Generate a 'StaticSHA256' value from a base16-encoded SHA256 hash.
 mkStaticSHA256FromText :: Text -> Either SomeException StaticSHA256
@@ -197,6 +206,7 @@ data CabalFileInfo
 instance Store CabalFileInfo
 instance NFData CabalFileInfo
 instance Hashable CabalFileInfo
+instance Binary CabalFileInfo
 
 -- | Convert from a package identifier to a tuple.
 toTuple :: PackageIdentifier -> (PackageName,Version)
@@ -272,7 +282,7 @@ packageIdentifierRevisionString (PackageIdentifierRevision ident cfi) =
           : showSize msize
         CFIRevision rev -> ["@rev:", show rev]
 
-    showSize Nothing = []
+    showSize Nothing    = []
     showSize (Just int) = [',' : show int]
 
 -- | Get a Text representation of the package identifier; name-ver.
