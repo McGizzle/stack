@@ -1,12 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
 module Stack.PackageDump
     ( Line
     , eachSection
@@ -25,32 +25,35 @@ module Stack.PackageDump
     , pruneDeps
     ) where
 
-import           Stack.Prelude
 import           Data.Attoparsec.Args
-import           Data.Attoparsec.Text as P
+import           Data.Attoparsec.Text          as P
 import           Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Text as CT
-import           Data.List (isPrefixOf)
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+import qualified Data.Conduit.List             as CL
+import qualified Data.Conduit.Text             as CT
+import           Data.List                     (isPrefixOf)
+import qualified Data.Map                      as Map
+import qualified Data.Set                      as Set
 import           Data.Store.VersionTagged
-import qualified Data.Text as T
-import qualified Distribution.License as C
-import qualified Distribution.System as OS
-import qualified Distribution.Text as C
-import           Path.Extra (toFilePathNoTrailingSep)
+import qualified Data.Text                     as T
+import qualified Distribution.License          as C
+import qualified Distribution.System           as OS
+import qualified Distribution.Text             as C
+import           Path.Extra                    (toFilePathNoTrailingSep)
+import           RIO.Process                   hiding (readProcess)
 import           Stack.GhcPkg
+import           Stack.Prelude
 import           Stack.Types.Compiler
 import           Stack.Types.GhcPkgId
 import           Stack.Types.PackageDump
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Version
-import           System.Directory (getDirectoryContents, doesFileExist)
-import           System.Process (readProcess) -- FIXME confirm that this is correct
-import           RIO.Process hiding (readProcess)
+import           System.Directory              (doesFileExist,
+                                                getDirectoryContents)
+import           System.Process                (readProcess)
 
+import           Debug.Trace
+import           System.IO
 -- | Call ghc-pkg dump with appropriate flags and stream to the given @Sink@, for a single database
 ghcPkgDump
     :: HasEnvOverride env
@@ -58,7 +61,7 @@ ghcPkgDump
     -> [Path Abs Dir] -- ^ if empty, use global
     -> ConduitM Text Void (RIO env) a
     -> RIO env a
-ghcPkgDump = ghcPkgCmdArgs ["dump"]
+ghcPkgDump = trace "dump" $ ghcPkgCmdArgs ["dump"]
 
 -- | Call ghc-pkg describe with appropriate flags and stream to the given @Sink@, for a single database
 ghcPkgDescribe
@@ -79,10 +82,11 @@ ghcPkgCmdArgs
     -> ConduitM Text Void (RIO env) a
     -> RIO env a
 ghcPkgCmdArgs cmd wc mpkgDbs sink = do
+    liftIO $ traceIO "ghcPkgCmdArgs"
     case reverse mpkgDbs of
-        (pkgDb:_) -> createDatabase wc pkgDb -- TODO maybe use some retry logic instead?
-        _ -> return ()
-    sinkProcessStdout (ghcPkgExeName wc) args sink'
+        (pkgDb:_) -> trace "createDatabase" $ createDatabase wc pkgDb -- TODO maybe use some retry logic instead?
+        _         -> trace "empty" $ return ()
+    trace ("after sink: ghcPkgCmdArgs" ++ show (ghcPkgExeName wc)) $ sinkProcessStdout (ghcPkgExeName wc) args sink'
   where
     args = concat
         [ case mpkgDbs of
@@ -180,7 +184,7 @@ sinkMatching reqProfiling reqHaddock reqSymbols allowed =
     isAllowed (PackageIdentifier name version) =
         case Map.lookup name allowed of
             Just version' | version /= version' -> False
-            _ -> True
+            _             -> True
 
 -- | Add profiling information to the stream of @DumpPackage@s
 addProfiling :: MonadIO m
@@ -280,20 +284,20 @@ hasDebuggingSymbols dir lib = do
 
 -- | Dump information for a single package
 data DumpPackage profiling haddock symbols = DumpPackage
-    { dpGhcPkgId :: !GhcPkgId
-    , dpPackageIdent :: !PackageIdentifier
-    , dpLicense :: !(Maybe C.License)
-    , dpLibDirs :: ![FilePath]
-    , dpLibraries :: ![Text]
+    { dpGhcPkgId          :: !GhcPkgId
+    , dpPackageIdent      :: !PackageIdentifier
+    , dpLicense           :: !(Maybe C.License)
+    , dpLibDirs           :: ![FilePath]
+    , dpLibraries         :: ![Text]
     , dpHasExposedModules :: !Bool
-    , dpExposedModules :: ![Text]
-    , dpDepends :: ![GhcPkgId]
+    , dpExposedModules    :: ![Text]
+    , dpDepends           :: ![GhcPkgId]
     , dpHaddockInterfaces :: ![FilePath]
-    , dpHaddockHtml :: !(Maybe FilePath)
-    , dpProfiling :: !profiling
-    , dpHaddock :: !haddock
-    , dpSymbols :: !symbols
-    , dpIsExposed :: !Bool
+    , dpHaddockHtml       :: !(Maybe FilePath)
+    , dpProfiling         :: !profiling
+    , dpHaddock           :: !haddock
+    , dpSymbols           :: !symbols
+    , dpIsExposed         :: !Bool
     }
     deriving (Show, Eq)
 
@@ -315,13 +319,13 @@ instance Show PackageDumpException where
 -- | Convert a stream of bytes into a stream of @DumpPackage@s
 conduitDumpPackage :: MonadThrow m
                    => ConduitM Text (DumpPackage () () ()) m ()
-conduitDumpPackage = (.| CL.catMaybes) $ eachSection $ do
+conduitDumpPackage = trace "inside conduitDumpPackage" $ (.| CL.catMaybes) $ eachSection $ do
     pairs <- eachPair (\k -> (k, ) <$> CL.consume) .| CL.consume
     let m = Map.fromList pairs
     let parseS k =
             case Map.lookup k m of
                 Just [v] -> return v
-                _ -> throwM $ MissingSingleField k m
+                _        -> throwM $ MissingSingleField k m
         -- Can't fail: if not found, same as an empty list. See:
         -- https://github.com/fpco/stack/issues/182
         parseM k = Map.findWithDefault [] k m
@@ -336,7 +340,7 @@ conduitDumpPackage = (.| CL.catMaybes) $ eachSection $ do
                     Nothing ->
                         case stripPrefixText "builtin_rts " bs of
                             Nothing -> (bs, False)
-                            Just x -> (x, True)
+                            Just x  -> (x, True)
                     Just x -> (x, True)
     case Map.lookup "id" m of
         Just ["builtin_rts"] -> return Nothing
@@ -353,12 +357,12 @@ conduitDumpPackage = (.| CL.catMaybes) $ eachSection $ do
                 license =
                     case parseM "license" of
                         [licenseText] -> C.simpleParse (T.unpack licenseText)
-                        _ -> Nothing
+                        _             -> Nothing
             depends <- mapMaybeM parseDepend $ concatMap T.words $ parseM "depends"
 
             let parseQuoted key =
                     case mapM (P.parseOnly (argsParser NoEscaping)) val of
-                        Left{} -> throwM (Couldn'tParseField key val)
+                        Left{}     -> throwM (Couldn'tParseField key val)
                         Right dirs -> return (concat dirs)
                   where
                     val = parseM key
@@ -366,7 +370,7 @@ conduitDumpPackage = (.| CL.catMaybes) $ eachSection $ do
             haddockInterfaces <- parseQuoted "haddock-interfaces"
             haddockHtml <- parseQuoted "haddock-html"
 
-            return $ Just DumpPackage
+            trace "returning from conduitDumpPkg" $ return $ Just DumpPackage
                 { dpGhcPkgId = ghcPkgId
                 , dpPackageIdent = PackageIdentifier name version
                 , dpLicense = license

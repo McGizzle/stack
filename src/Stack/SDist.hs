@@ -460,7 +460,7 @@ buildExtractedTarball pkgDir = do
                      }
         }
   local adjustEnvForBuild $
-    build (const (return ())) Nothing defaultBuildOptsCLI
+          build (const (return ())) Nothing defaultBuildOptsCLI False
 
 -- | Version of 'checkSDistTarball' that first saves lazy bytestring to
 -- temporary directory and then calls 'checkSDistTarball' on it.

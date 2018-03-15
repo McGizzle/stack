@@ -141,9 +141,11 @@ library:
   ghc-options:
   - -fwarn-identities
   exposed-modules:
+  - Distributed.MainHelpers
+  - Distributed.Run
+  - Distributed.Execute
   - Control.Concurrent.Execute
   - Control.Concurrent.Types
-  - Control.Concurrent.Distributed
   - Data.Aeson.Extended
   - Data.Attoparsec.Args
   - Data.Attoparsec.Combinators

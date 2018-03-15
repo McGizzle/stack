@@ -1,11 +1,11 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TupleSections              #-}
 
 -- | Names for flags.
 
@@ -22,15 +22,16 @@ module Stack.Types.FlagName
   ,mkFlagName)
   where
 
-import           Stack.Prelude
 import           Data.Aeson.Extended
-import           Data.Attoparsec.Text as A
-import           Data.Char (isLetter, isDigit, toLower)
-import qualified Data.Text as T
+import           Data.Attoparsec.Text            as A
+import           Data.Char                       (isDigit, isLetter, toLower)
+import qualified Data.Text                       as T
 import qualified Distribution.PackageDescription as Cabal
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Syntax
+import           Stack.Prelude
 
+import           Data.Binary
 -- | A parse fail.
 newtype FlagNameParseFail
   = FlagNameParseFail Text
@@ -69,6 +70,7 @@ instance FromJSONKey FlagName where
   fromJSONKey = FromJSONKeyTextParser $ \k ->
     either (fail . show) return $ parseFlagName k
 
+instance Binary FlagName
 -- | Attoparsec parser for a flag name
 flagNameParser :: Parser FlagName
 flagNameParser = fmap FlagName $ do

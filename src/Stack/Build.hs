@@ -54,6 +54,7 @@ import           Stack.Types.Package
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Version
+import           System.IO
 
 #ifdef WINDOWS
 import           Stack.Types.Compiler
@@ -76,8 +77,9 @@ build :: HasEnvConfig env
       => (Set (Path Abs File) -> IO ()) -- ^ callback after discovering all local files
       -> Maybe FileLock
       -> BuildOptsCLI
+      -> Bool
       -> RIO env ()
-build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
+build setLocalFiles mbuildLk boptsCli distributed = fixCodePage $ do
     bopts <- view buildOptsL
     let profiling = boptsLibProfile bopts || boptsExeProfile bopts
     let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)
@@ -104,62 +106,46 @@ build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
              -- and archive files, since those shouldn't
              -- change. That's a possible optimization to consider.
              [lpFiles lp | PSFiles lp _ <- Map.elems sourceMap]
-
-    -- installedMap = map of installed packages
-    -- globalDumpPkgs = looks like a load of packages with install location
-    -- snapshotDumpPkgs =
-    -- localDumpPkgs = []
-    (installedMap, globalDumpPkgs, snapshotDumpPkgs, localDumpPkgs) <-
-        getInstalled
-                     GetInstalledOpts
+    let getInstalledOpts = GetInstalledOpts
                          { getInstalledProfiling = profiling
                          , getInstalledHaddock   = shouldHaddockDeps bopts
                          , getInstalledSymbols   = symbols }
-                     sourceMap
-
-    --logInfo $ T.pack $ "\n\nBuild -> build -> globalDumpPkgs: " ++ show localDumpPkgs ++ "\n\n"
+    liftIO $ print getInstalledOpts
+    (installedMap, globalDumpPkgs, snapshotDumpPkgs, localDumpPkgs) <- getInstalled getInstalledOpts sourceMap
 
     baseConfigOpts <- mkBaseConfigOpts boptsCli
-    plan <- constructPlan ls baseConfigOpts locals extraToBuild localDumpPkgs loadPackage sourceMap installedMap (boptsCLIInitialBuildSteps boptsCli)
-    --liftIO $ traceIO $ "\nPlan -> " ++ show plan
-    --logInfo $ T.pack $ "Build -> build -> plan: " ++ show installedMap
+    if distributed then do runDistributed
+                   else do
+                           plan <- constructPlan ls baseConfigOpts locals extraToBuild localDumpPkgs loadPackage sourceMap installedMap (boptsCLIInitialBuildSteps boptsCli)
+                           allowLocals <- view $ configL.to configAllowLocals
 
-    allowLocals <- view $ configL.to configAllowLocals
-    unless allowLocals $ case justLocals plan of
-      []           -> return ()
-      localsIdents -> throwM $ LocalPackagesPresent localsIdents
+                           unless allowLocals $ case justLocals plan of
+                                                  []           -> return ()
+                                                  localsIdents -> throwM $ LocalPackagesPresent localsIdents
+                           case (mbuildLk, allLocal plan) of
+                             (Just lk,True) -> do logInfo "All installs are local; releasing snapshot lock early."
+                                                  liftIO $ unlockFile lk
+                             _ -> return ()
 
-    -- If our work to do is all local, let someone else have a turn with the snapshot.
-    -- They won't damage what's already in there.
-    case (mbuildLk, allLocal plan) of
-       -- NOTE: This policy is too conservative.  In the future we should be able to
-       -- schedule unlocking as an Action that happens after all non-local actions are
-       -- complete.
-       --
-       -- THis build aint 'all local' takes second case
-      (Just lk,True) -> do logInfo "All installs are local; releasing snapshot lock early."
-                           liftIO $ unlockFile lk
-      _ -> return ()
-
-    checkCabalVersion
-    warnAboutSplitObjs bopts
-    warnIfExecutablesWithSameNameCouldBeOverwritten locals plan
-
-    when (boptsPreFetch bopts) $
-        preFetch plan
-    logInfo "\nPrinting Plan"
-    printPlan plan
-    logInfo "\n"
-    if boptsCLIDryrun boptsCli
-        then printPlan plan
-        else executePlan boptsCli baseConfigOpts locals
-                         globalDumpPkgs
-                         snapshotDumpPkgs
-                         localDumpPkgs
-                         installedMap
-                         targets
-                         plan
-
+                           checkCabalVersion
+                           warnAboutSplitObjs bopts
+                           warnIfExecutablesWithSameNameCouldBeOverwritten locals plan
+                           when (boptsPreFetch bopts) $
+                              preFetch plan
+                           logInfo "\nPrinting Plan"
+                           printPlan plan
+                           logInfo "\n"
+                           if boptsCLIDryrun boptsCli
+                                then printPlan plan
+                                else executePlan boptsCli baseConfigOpts locals
+                                                 globalDumpPkgs
+                                                 snapshotDumpPkgs
+                                                 localDumpPkgs
+                                                 installedMap
+                                                 targets
+                                                 plan
+runDistributed :: HasEnvConfig env => RIO env ()
+runDistributed = return ()
 -- | If all the tasks are local, they don't mutate anything outside of our local directory.
 allLocal :: Plan -> Bool
 allLocal =

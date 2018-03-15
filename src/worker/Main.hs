@@ -1,11 +1,12 @@
 module Main where
 
-import Control.Concurrent.Distributed
-import System.Environment
+import           Distributed.Execute
+import           System.Environment
 
 main :: IO ()
 main = do
+        print "Starting worker executable"
         args <- getArgs
         case args of
-          ["worker",host,port] -> startWorker host port
-          _                    -> putStrLn "Bad args"
+          [host,port] -> startWorker host port
+          _           -> putStrLn "Bad args"

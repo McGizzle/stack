@@ -23,13 +23,22 @@ import qualified System.FilePath as FP
 import           System.IO.Error (isDoesNotExistError)
 
 import           Data.Conduit.Binary (sourceHandle, sinkHandle)
-import qualified Data.Conduit.Binary as CB
+import qualified Data.Conduit.Binary as CB 
+import qualified Data.ByteString as S
+import qualified System.Process.Typed as P
+
 import qualified Data.Conduit.List as CL
-import           Data.Conduit.Process.Typed (withLoggedProcess_, createSource)
+import           Data.Conduit.Process.Typed (eceStdout, eceStderr,createSource, ProcessConfig, Process)
 import           RIO.Process (HasEnvOverride, setStdin, closed, getStderr, getStdout, withProc, withProcess_, setStdout, setStderr)
 import           Data.Text.Encoding (decodeUtf8With)
 import           Data.Text.Encoding.Error (lenientDecode)
 
+--------
+import qualified Data.Conduit.List as CL
+import qualified Data.ByteString.Lazy as BL
+
+
+import Debug.Trace
 -- | Get a source for a file. Unlike @sourceFile@, doesn't require
 -- @ResourceT@. Unlike explicit @withBinaryFile@ and @sourceHandle@
 -- usage, you can't accidentally use @WriteMode@ instead of
@@ -64,9 +73,6 @@ withSinkFileCautious fp inner =
 withSystemTempDir :: MonadUnliftIO m => String -> (Path Abs Dir -> m a) -> m a
 withSystemTempDir str inner = withRunInIO $ \run -> Path.IO.withSystemTempDir str $ run . inner
 
--- | Consume the stdout and stderr of a process feeding strict 'ByteString's to the consumers.
---
--- Throws a 'ReadProcessException' if unsuccessful in launching, or 'ProcessExitedUnsuccessfully' if the process itself fails.
 sinkProcessStderrStdout
   :: forall e o env. HasEnvOverride env
   => String -- ^ Command
@@ -83,6 +89,46 @@ sinkProcessStderrStdout name args sinkStderr sinkStdout =
       runConduit (getStderr p .| sinkStderr) `concurrently`
       runConduit (getStdout p .| sinkStdout)
 
+
+-------
+modwithProcess :: ProcessConfig stdin stdout stderr
+            -> (Process stdin stdout stderr -> IO a)
+            -> IO a
+modwithProcess config = trace "modWithProcess" $ bracket (P.startProcess config) P.stopProcess
+
+
+createSourceLogged ref =
+    (\h ->
+       (  CB.sourceHandle h
+       .| CL.iterM (\bs -> liftIO $ modifyIORef ref (. (bs:))))
+    )
+    `fmap` P.createPipe
+
+withLoggedProcess_
+  :: MonadUnliftIO m
+  => ProcessConfig stdin stdoutIgnored stderrIgnored
+  -> (Process stdin (ConduitM () S.ByteString m ()) (ConduitM () S.ByteString m ()) -> m a)
+  -> m a
+withLoggedProcess_ pc inner = withUnliftIO $ \u -> do
+  stdoutBuffer <- trace "newIOREFF" $ newIORef id
+  stderrBuffer <-  trace "newIOREFF" $ newIORef id
+  let pc' = setStdout (createSourceLogged stdoutBuffer)
+          $ setStderr (createSourceLogged stderrBuffer) pc
+  traceShow pc' $ modwithProcess pc' $ \p -> do
+    a <-  trace "unliftIO" $ unliftIO u $ inner p
+    let drain src = unliftIO u (runConduit (src .| CL.sinkNull))
+    ((), ()) <- trace "draining" $ drain (getStdout p) `concurrently`
+                drain (getStderr p)
+    P.checkExitCode p `catch` \ece -> do
+      stdout <- readIORef stdoutBuffer
+      stderr <- readIORef stderrBuffer
+      throwIO ece
+        { eceStdout = BL.fromChunks $ stdout []
+        , eceStderr = BL.fromChunks $ stderr []
+        }
+    return a
+
+
 -- | Consume the stdout of a process feeding strict 'ByteString's to a consumer.
 -- If the process fails, spits out stdout and stderr as error log
 -- level. Should not be used for long-running processes or ones with
@@ -97,7 +143,8 @@ sinkProcessStdout
     -> RIO env a
 sinkProcessStdout name args sinkStdout =
   withProc name args $ \pc ->
-  withLoggedProcess_ (setStdin closed pc) $ \p -> runConcurrently
+          -- THIS IS WHERE THE ISSUE IS, withLoggedProcess seems to stall
+  trace ("Cmd: " ++ name ++ show args) $ withLoggedProcess_ (setStdin closed pc) $ \p -> trace ("in withLoggedProcess" ++ show p) $ runConcurrently
     $ Concurrently (runConduit $ getStderr p .| CL.sinkNull)
    *> Concurrently (runConduit $ getStdout p .| sinkStdout)
 

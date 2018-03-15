@@ -3,12 +3,12 @@ module Control.Concurrent.Types where
 
 import           Control.Concurrent.STM
 import           Control.Exception
+import           Data.Binary
 import qualified Data.Set                      as Set
+import           GHC.Generics                  (Generic)
 import           Stack.Prelude
+import           Stack.Types.Build
 import           Stack.Types.PackageIdentifier
-import Data.Binary
-import GHC.Generics (Generic)
-
 
 data ActionType
     = ATBuild
@@ -33,13 +33,14 @@ data ActionId = ActionId !PackageIdentifier !ActionType
 data Action = Action
     { actionId          :: !ActionId
     , actionDeps        :: !(Set ActionId)
-    , actionDo          :: !(ActionContext -> IO ()) 
+    , actionDo          :: !(ActionContext -> IO ())
     , actionConcurrency :: !Concurrency
+      , actionTask      :: !Task
     }
     deriving(Generic)
 
 instance Show Action where
-        show (Action a b c d) = "actionId: " ++ show a ++ " actionDeps:" ++ show b ++ " Action Do!!!!!" ++ " Concurrency" ++ show d
+        show (Action a b c d e) = "actionId: " ++ show a ++ " actionDeps:" ++ show b ++ " Action Do!!!!!" ++ " Concurrency" ++ show d
 
 
 data Concurrency = ConcurrencyAllowed | ConcurrencyDisallowed

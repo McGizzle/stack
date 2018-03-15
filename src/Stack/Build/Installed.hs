@@ -1,7 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE OverloadedStrings     #-}
 -- Determine which packages are already installed
 module Stack.Build.Installed
@@ -12,13 +12,13 @@ module Stack.Build.Installed
     ) where
 
 import           Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Foldable as F
-import qualified Data.HashSet as HashSet
+import qualified Data.Conduit.List             as CL
+import qualified Data.Foldable                 as F
+import qualified Data.HashSet                  as HashSet
 import           Data.List
-import qualified Data.Map.Strict as M
-import qualified Data.Map.Strict as Map
-import qualified Data.Text as T
+import qualified Data.Map.Strict               as M
+import qualified Data.Map.Strict               as Map
+import qualified Data.Text                     as T
 import           Path
 import           Stack.Build.Cache
 import           Stack.Constants
@@ -34,6 +34,8 @@ import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Version
 
+import           Debug.Trace
+import           System.IO
 -- | Options for 'getInstalled'.
 data GetInstalledOpts = GetInstalledOpts
     { getInstalledProfiling :: !Bool
@@ -42,7 +44,7 @@ data GetInstalledOpts = GetInstalledOpts
       -- ^ Require haddocks?
     , getInstalledSymbols   :: !Bool
       -- ^ Require debugging symbols?
-    }
+    }deriving(Show)
 
 -- | Returns the new InstalledMap and all of the locally registered packages.
 getInstalled :: HasEnvConfig env
@@ -56,18 +58,22 @@ getInstalled :: HasEnvConfig env
                   )
 getInstalled opts sourceMap = do
     logDebug "Finding out which packages are already installed"
+    liftIO $ traceIO "Inside getInsatlled"
     snapDBPath <- packageDatabaseDeps
+    liftIO $ traceIO "got snapDBPath"
     localDBPath <- packageDatabaseLocal
+    liftIO $ traceIO "Inside localDBPath"
     extraDBPaths <- packageDatabaseExtra
-
+    liftIO $  traceIO "Inside extraDBPath"
     mcache <-
         if getInstalledProfiling opts || getInstalledHaddock opts
             then configInstalledCache >>= liftM Just . loadInstalledCache
             else return Nothing
 
+    liftIO $ traceIO "Got mcache"
     let loadDatabase' = loadDatabase opts mcache sourceMap
-
     (installedLibs0, globalDumpPkgs) <- loadDatabase' Nothing []
+    liftIO $ traceIO "DB loaded"
     (installedLibs1, _extraInstalled) <-
       foldM (\lhs' pkgdb ->
         loadDatabase' (Just (ExtraGlobal, pkgdb)) (fst lhs')
@@ -123,9 +129,12 @@ loadDatabase :: HasEnvConfig env
              -> [LoadHelper] -- ^ from parent databases
              -> RIO env ([LoadHelper], [DumpPackage () () ()])
 loadDatabase opts mcache sourceMap mdb lhs0 = do
+    liftIO $ traceIO "Inside loadDatabase"
     wc <- view $ actualCompilerVersionL.to whichCompiler
+    liftIO $ traceIO "Got wc"
     (lhs1', dps) <- ghcPkgDump wc (fmap snd (maybeToList mdb))
                 $ conduitDumpPackage .| sink
+    liftIO $ traceIO "ran ghcPkgDump"
     let ghcjsHack = wc == Ghcjs && isNothing mdb
     lhs1 <- mapMaybeM (processLoadResult mdb ghcjsHack) lhs1'
     let lhs = pruneDeps
@@ -141,19 +150,19 @@ loadDatabase opts mcache sourceMap mdb lhs0 = do
             Just cache | getInstalledProfiling opts -> addProfiling cache
             -- Just an optimization to avoid calculating the profiling
             -- values when they aren't necessary
-            _ -> CL.map (\dp -> dp { dpProfiling = False })
+            _          -> CL.map (\dp -> dp { dpProfiling = False })
     conduitHaddockCache =
         case mcache of
             Just cache | getInstalledHaddock opts -> addHaddock cache
             -- Just an optimization to avoid calculating the haddock
             -- values when they aren't necessary
-            _ -> CL.map (\dp -> dp { dpHaddock = False })
+            _          -> CL.map (\dp -> dp { dpHaddock = False })
     conduitSymbolsCache =
         case mcache of
             Just cache | getInstalledSymbols opts -> addSymbols cache
             -- Just an optimization to avoid calculating the debugging
             -- symbol values when they aren't necessary
-            _ -> CL.map (\dp -> dp { dpSymbols = False })
+            _          -> CL.map (\dp -> dp { dpSymbols = False })
     mloc = fmap fst mdb
     sinkDP = conduitProfilingCache
            .| conduitHaddockCache
@@ -238,12 +247,12 @@ isAllowed opts mcache sourceMap mloc dp
                 case mloc of
                     -- The sourceMap has nothing to say about this global
                     -- package, so we can use it
-                    Nothing -> Allowed
+                    Nothing          -> Allowed
                     Just ExtraGlobal -> Allowed
                     -- For non-global packages, don't include unknown packages.
                     -- See:
                     -- https://github.com/commercialhaskell/stack/issues/292
-                    Just _ -> UnknownPkg
+                    Just _           -> UnknownPkg
             Just pii
                 | not (checkLocation (piiLocation pii)) -> WrongLocation mloc (piiLocation pii)
                 | version /= piiVersion pii -> WrongVersion version (piiVersion pii)
@@ -282,6 +291,6 @@ toLoadHelper mloc dp = LoadHelper
     ident@(PackageIdentifier name _) = dpPackageIdent dp
 
 toPackageLocation :: Maybe InstalledPackageLocation -> InstallLocation
-toPackageLocation Nothing = Snap
-toPackageLocation (Just ExtraGlobal) = Snap
+toPackageLocation Nothing                  = Snap
+toPackageLocation (Just ExtraGlobal)       = Snap
 toPackageLocation (Just (InstalledTo loc)) = loc

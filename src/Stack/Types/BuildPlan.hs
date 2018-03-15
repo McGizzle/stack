@@ -1,12 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 -- | Shared types for various stackage packages.
@@ -33,17 +33,21 @@ module Stack.Types.BuildPlan
     , sdWantedCompilerVersion
     ) where
 
-import           Data.Aeson (ToJSON (..), FromJSON (..), withText, object, (.=))
-import           Data.Aeson.Extended (WithJSONWarnings (..), (..:), (..:?), withObjectWarnings, noJSONWarnings, (..!=))
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+import           Data.Aeson                    (FromJSON (..), ToJSON (..),
+                                                object, withText, (.=))
+import           Data.Aeson.Extended           (WithJSONWarnings (..),
+                                                noJSONWarnings,
+                                                withObjectWarnings, (..!=),
+                                                (..:), (..:?))
+import qualified Data.Map                      as Map
+import qualified Data.Set                      as Set
 import           Data.Store.Version
 import           Data.Store.VersionTagged
-import qualified Data.Text as T
-import           Data.Text.Encoding (encodeUtf8)
-import qualified Distribution.ModuleName as C
-import qualified Distribution.Version as C
-import           Network.HTTP.Client (parseRequest)
+import qualified Data.Text                     as T
+import           Data.Text.Encoding            (encodeUtf8)
+import qualified Distribution.ModuleName       as C
+import qualified Distribution.Version          as C
+import           Network.HTTP.Client           (parseRequest)
 import           Stack.Prelude
 import           Stack.Types.Compiler
 import           Stack.Types.FlagName
@@ -54,6 +58,7 @@ import           Stack.Types.Resolver
 import           Stack.Types.Version
 import           Stack.Types.VersionIntervals
 
+import           Data.Binary
 -- | A definition of a snapshot. This could be a Stackage snapshot or
 -- something custom. It does not include information on the global
 -- package database, this is added later.
@@ -66,30 +71,30 @@ import           Stack.Types.VersionIntervals
 -- snapshot load step we will resolve the contents of tarballs and
 -- repos, figure out package names, and assigned values appropriately.
 data SnapshotDef = SnapshotDef
-    { sdParent :: !(Either (CompilerVersion 'CVWanted) SnapshotDef)
+    { sdParent       :: !(Either (CompilerVersion 'CVWanted) SnapshotDef)
     -- ^ The snapshot to extend from. This is either a specific
     -- compiler, or a @SnapshotDef@ which gives us more information
     -- (like packages). Ultimately, we'll end up with a
     -- @CompilerVersion@.
-    , sdResolver        :: !LoadedResolver
+    , sdResolver     :: !LoadedResolver
     -- ^ The resolver that provides this definition.
-    , sdResolverName    :: !Text
+    , sdResolverName :: !Text
     -- ^ A user-friendly way of referring to this resolver.
-    , sdLocations :: ![PackageLocationIndex Subdirs]
+    , sdLocations    :: ![PackageLocationIndex Subdirs]
     -- ^ Where to grab all of the packages from.
     , sdDropPackages :: !(Set PackageName)
     -- ^ Packages present in the parent which should not be included
     -- here.
-    , sdFlags :: !(Map PackageName (Map FlagName Bool))
+    , sdFlags        :: !(Map PackageName (Map FlagName Bool))
     -- ^ Flag values to override from the defaults
-    , sdHidden :: !(Map PackageName Bool)
+    , sdHidden       :: !(Map PackageName Bool)
     -- ^ Packages which should be hidden when registering. This will
     -- affect, for example, the import parser in the script
     -- command. We use a 'Map' instead of just a 'Set' to allow
     -- overriding the hidden settings in a parent snapshot.
-    , sdGhcOptions :: !(Map PackageName [Text])
+    , sdGhcOptions   :: !(Map PackageName [Text])
     -- ^ GHC options per package
-    , sdGlobalHints :: !(Map PackageName (Maybe Version))
+    , sdGlobalHints  :: !(Map PackageName (Maybe Version))
     -- ^ Hints about which packages are available globally. When
     -- actually building code, we trust the package database provided
     -- by GHC itself, since it may be different based on platform or
@@ -127,7 +132,7 @@ setCompilerVersion cv =
   where
     go sd =
       case sdParent sd of
-        Left _ -> sd { sdParent = Left cv }
+        Left _    -> sd { sdParent = Left cv }
         Right sd' -> sd { sdParent = Right $ go sd' }
 
 -- | Where to get the contents of a package (including cabal file
@@ -145,6 +150,7 @@ data PackageLocation subdirs
     deriving (Generic, Show, Eq, Ord, Data, Typeable, Functor)
 instance (Store a) => Store (PackageLocation a)
 instance (NFData a) => NFData (PackageLocation a)
+instance (Binary a) => Binary (PackageLocation a)
 
 -- | Add in the possibility of getting packages from the index
 -- (including cabal file revisions). We have special handling of this
@@ -164,19 +170,22 @@ instance (NFData a) => NFData (PackageLocationIndex a)
 -- path. Local file path archives are assumed to be unchanging
 -- over time, and so are allowed in custom snapshots.
 data Archive subdirs = Archive
-  { archiveUrl :: !Text
+  { archiveUrl     :: !Text
   , archiveSubdirs :: !subdirs
-  , archiveHash :: !(Maybe StaticSHA256)
+  , archiveHash    :: !(Maybe StaticSHA256)
   }
     deriving (Generic, Show, Eq, Ord, Data, Typeable, Functor)
 instance Store a => Store (Archive a)
 instance NFData a => NFData (Archive a)
+instance Binary a => Binary (Archive a)
 
 -- | The type of a source control repository.
 data RepoType = RepoGit | RepoHg
     deriving (Generic, Show, Eq, Ord, Data, Typeable)
 instance Store RepoType
 instance NFData RepoType
+instance Binary RepoType
+
 
 data Subdirs
   = DefaultSubdirs
@@ -189,18 +198,19 @@ instance FromJSON Subdirs where
 
 -- | Information on packages stored in a source control repository.
 data Repo subdirs = Repo
-    { repoUrl :: !Text
-    , repoCommit :: !Text
-    , repoType :: !RepoType
+    { repoUrl     :: !Text
+    , repoCommit  :: !Text
+    , repoType    :: !RepoType
     , repoSubdirs :: !subdirs
     }
     deriving (Generic, Show, Eq, Ord, Data, Typeable, Functor)
 instance Store a => Store (Repo a)
 instance NFData a => NFData (Repo a)
+instance Binary a => Binary (Repo a)
 
 instance subdirs ~ Subdirs => ToJSON (PackageLocationIndex subdirs) where
     toJSON (PLIndex ident) = toJSON ident
-    toJSON (PLOther loc) = toJSON loc
+    toJSON (PLOther loc)   = toJSON loc
 
 instance subdirs ~ Subdirs => ToJSON (PackageLocation subdirs) where
     toJSON (PLFilePath fp) = toJSON fp
@@ -211,12 +221,12 @@ instance subdirs ~ Subdirs => ToJSON (PackageLocation subdirs) where
             DefaultSubdirs    -> []
             ExplicitSubdirs x -> ["subdirs" .= x]
         , case msha of
-            Nothing -> []
+            Nothing  -> []
             Just sha -> ["sha256" .= staticSHA256ToText sha]
         ]
     toJSON (PLRepo (Repo url commit typ subdirs)) = object $ concat
         [ case subdirs of
-            DefaultSubdirs -> []
+            DefaultSubdirs    -> []
             ExplicitSubdirs x -> ["subdirs" .= x]
         , [urlKey .= url]
         , ["commit" .= commit]
@@ -272,7 +282,7 @@ instance subdirs ~ Subdirs => FromJSON (WithJSONWarnings (PackageLocation subdir
 -- | Name of an executable.
 newtype ExeName = ExeName { unExeName :: Text }
     deriving (Show, Eq, Ord, Hashable, IsString, Generic, Store, NFData, Data, Typeable)
-
+instance Binary ExeName
 -- | A fully loaded snapshot combined , including information gleaned from the
 -- global database and parsing cabal files.
 --
@@ -298,9 +308,9 @@ loadedSnapshotVC = storeVersionConfig "ls-v4" "a_ljrJRo8hA_-gcIDP9c6NXJ2pE="
 -- dependencies or exposed modules) can be conditional in the cabal
 -- file, which means it will vary based on flags, arch, and OS.
 data LoadedPackageInfo loc = LoadedPackageInfo
-    { lpiVersion :: !Version
+    { lpiVersion        :: !Version
     -- ^ This /must/ match the version specified within 'rpiDef'.
-    , lpiLocation :: !loc
+    , lpiLocation       :: !loc
     -- ^ Where to get the package from. This could be a few different
     -- things:
     --
@@ -312,21 +322,21 @@ data LoadedPackageInfo loc = LoadedPackageInfo
     -- * For a dependency, it will be a @PackageLocation@.
     --
     -- * For a project package, it will be a @Path Abs Dir@.
-    , lpiFlags :: !(Map FlagName Bool)
+    , lpiFlags          :: !(Map FlagName Bool)
     -- ^ Flags to build this package with.
-    , lpiGhcOptions :: ![Text]
+    , lpiGhcOptions     :: ![Text]
     -- ^ GHC options to use when building this package.
-    , lpiPackageDeps :: !(Map PackageName VersionIntervals)
+    , lpiPackageDeps    :: !(Map PackageName VersionIntervals)
     -- ^ All packages which must be built/copied/registered before
     -- this package.
-    , lpiProvidedExes :: !(Set ExeName)
+    , lpiProvidedExes   :: !(Set ExeName)
     -- ^ The names of executables provided by this package, for
     -- performing build tool lookups.
-    , lpiNeededExes :: !(Map ExeName VersionIntervals)
+    , lpiNeededExes     :: !(Map ExeName VersionIntervals)
     -- ^ Executables needed by this package.
     , lpiExposedModules :: !(Set ModuleName)
     -- ^ Modules exposed by this package's library
-    , lpiHide :: !Bool
+    , lpiHide           :: !Bool
     -- ^ Should this package be hidden in the database. Affects the
     -- script interpreter's module name import parser.
     }

@@ -1,12 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE CPP                #-}
+{-# LANGUAGE ConstraintKinds    #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE NoImplicitPrelude  #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE TupleSections      #-}
 
 -- | Run a GHCi configured with the user's package(s).
 
@@ -17,26 +17,28 @@ module Stack.Ghci
     , ghci
     ) where
 
-import           Stack.Prelude
-import           Control.Monad.State.Strict (State, execState, get, modify)
-import qualified Data.ByteString.Char8 as S8
+import           Control.Monad.State.Strict      (State, execState, get, modify)
+import qualified Data.ByteString.Char8           as S8
 import           Data.List
-import           Data.List.Extra (nubOrd)
-import qualified Data.Map.Strict as M
-import qualified Data.Set as S
-import qualified Data.Text as T
+import           Data.List.Extra                 (nubOrd)
+import qualified Data.Map.Strict                 as M
+import qualified Data.Set                        as S
+import qualified Data.Text                       as T
 import qualified Distribution.PackageDescription as C
 import           Path
-import           Path.Extra (toFilePathNoTrailingSep)
-import           Path.IO hiding (withSystemTempDir)
+import           Path.Extra                      (toFilePathNoTrailingSep)
+import           Path.IO                         hiding (withSystemTempDir)
+import           RIO.Process                     (execObserve, execSpawn,
+                                                  withEnvOverride)
 import           Stack.Build
 import           Stack.Build.Installed
 import           Stack.Build.Source
 import           Stack.Build.Target
-import           Stack.Config (getLocalPackages)
+import           Stack.Config                    (getLocalPackages)
 import           Stack.Constants.Config
 import           Stack.Ghci.Script
 import           Stack.Package
+import           Stack.Prelude
 import           Stack.PrettyPrint
 import           Stack.Types.Build
 import           Stack.Types.Compiler
@@ -47,11 +49,10 @@ import           Stack.Types.Package
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Runner
-import           System.IO (putStrLn, putStr, getLine)
-import           RIO.Process (withEnvOverride, execSpawn, execObserve)
+import           System.IO                       (getLine, putStr, putStrLn)
 
 #ifndef WINDOWS
-import qualified System.Posix.Files as Posix
+import qualified System.Posix.Files              as Posix
 #endif
 
 -- | Command-line options for GHC.
@@ -73,14 +74,14 @@ data GhciOpts = GhciOpts
 
 -- | Necessary information to load a package or its components.
 data GhciPkgInfo = GhciPkgInfo
-    { ghciPkgName :: !PackageName
-    , ghciPkgOpts :: ![(NamedComponent, BuildInfoOpts)]
-    , ghciPkgDir :: !(Path Abs Dir)
-    , ghciPkgModules :: !ModuleMap
-    , ghciPkgCFiles :: !(Set (Path Abs File)) -- ^ C files.
-    , ghciPkgMainIs :: !(Map NamedComponent (Set (Path Abs File)))
+    { ghciPkgName        :: !PackageName
+    , ghciPkgOpts        :: ![(NamedComponent, BuildInfoOpts)]
+    , ghciPkgDir         :: !(Path Abs Dir)
+    , ghciPkgModules     :: !ModuleMap
+    , ghciPkgCFiles      :: !(Set (Path Abs File)) -- ^ C files.
+    , ghciPkgMainIs      :: !(Map NamedComponent (Set (Path Abs File)))
     , ghciPkgTargetFiles :: !(Maybe (Set (Path Abs File)))
-    , ghciPkgPackage :: !Package
+    , ghciPkgPackage     :: !Package
     } deriving Show
 
 -- Mapping from a module name to a map with all of the paths that use
@@ -140,7 +141,7 @@ ghci opts@GhciOpts{..} = do
         Left rawFileTargets -> do
             case mainIsTargets of
                 Nothing -> return ()
-                Just _ -> throwM Can'tSpecifyFilesAndMainIs
+                Just _  -> throwM Can'tSpecifyFilesAndMainIs
             -- Figure out targets based on filepath targets
             (targetMap, fileInfo, extraFiles) <- findFileTargets locals rawFileTargets
             return (targetMap, Just (fileInfo, extraFiles))
@@ -172,7 +173,7 @@ preprocessTargets buildOptsCLI rawTargets = do
                 let fp = T.unpack fp0
                 mpath <- liftIO $ forgivingAbsence (resolveFile' fp)
                 case mpath of
-                    Nothing -> throwM (MissingFileTarget fp)
+                    Nothing   -> throwM (MissingFileTarget fp)
                     Just path -> return path
             return (Left fileTargets)
         else do
@@ -198,8 +199,9 @@ findFileTargets
     -> RIO env (Map PackageName Target, Map PackageName (Set (Path Abs File)), [Path Abs File])
 findFileTargets locals fileTargets = do
     filePackages <- forM locals $ \lp -> do
-        (_,compFiles,_,_) <- getPackageFiles (packageFiles (lpPackage lp)) (lpCabalFile lp)
-        return (lp, M.map (S.map dotCabalGetPath) compFiles)
+            let WillGetPackageFiles pkgDesc = packageFiles (lpPackage lp)
+            (_,compFiles,_,_) <- getPackageFiles' (lpCabalFile lp) pkgDesc
+            return (lp, M.map (S.map dotCabalGetPath) compFiles)
     let foundFileTargetComponents :: [(Path Abs File, [(PackageName, NamedComponent)])]
         foundFileTargetComponents =
             map (\fp -> (fp, ) $ sort $
@@ -287,7 +289,7 @@ getAllNonLocalTargets
     -> RIO env [PackageName]
 getAllNonLocalTargets targets = do
   let isNonLocal (TargetAll Dependency) = True
-      isNonLocal _ = False
+      isNonLocal _                      = False
   return $ map fst $ filter (isNonLocal . snd) (M.toList targets)
 
 buildDepsAndInitialSteps :: HasEnvConfig env => GhciOpts -> [Text] -> RIO env ()
@@ -301,7 +303,7 @@ buildDepsAndInitialSteps GhciOpts{..} targets0 = do
             , boptsCLIInitialBuildSteps = True
             , boptsCLIFlags = ghciFlags
             , boptsCLIGhcOptions = ghciGhcOptions
-            }
+            } False
         case eres of
             Right () -> return ()
             Left err -> do
@@ -419,11 +421,11 @@ renderScript isIntero pkgs mainFile onlyMain extraFiles = do
           -- Otherwise don't try. See
           -- https://github.com/commercialhaskell/stack/issues/3309
           (True, [pkg]) -> cmdCdGhc (ghciPkgDir pkg)
-          _ -> mempty
+          _             -> mempty
         addPhase = cmdAdd $ S.fromList (map Left allModules ++ addMain)
         addMain = case mainFile of
             Just path -> [Right path]
-            _ -> []
+            _         -> []
         modulePhase = cmdModule $ S.fromList allModules
         allModules = nubOrd $ concatMap (M.keys . ghciPkgModules) pkgs
     case getFileTargets pkgs <> extraFiles of
@@ -517,9 +519,9 @@ figureOutMainFile bopts mainIsTargets targets0 packages = do
             return $ Just fp
     renderComp c =
         case c of
-            CLib -> "lib"
-            CExe name -> "exe:" <> name
-            CTest name -> "test:" <> name
+            CLib        -> "lib"
+            CExe name   -> "exe:" <> name
+            CTest name  -> "test:" <> name
             CBench name -> "bench:" <> name
     sampleTargetArg (pkg,comp,_) =
         packageNameText pkg <> ":" <> renderComp comp
@@ -599,7 +601,7 @@ makeGhciPkgInfo buildOptsCLI sourceMap installedMap locals addPkgs mfileTargets 
                     (C.updatePackageDescription bi y))
               mbuildinfo
 
-    (mods,files,opts) <- getPackageOpts (packageOpts pkg) sourceMap installedMap locals addPkgs cabalfp
+    let (mods,files,opts) = (packageOpts pkg) --sourceMap installedMap locals addPkgs cabalfp
     let filteredOpts = filterWanted opts
         filterWanted = M.filterWithKey (\k _ -> k `S.member` allWanted)
         allWanted = wantedPackageComponents bopts target pkg
@@ -625,7 +627,7 @@ wantedPackageComponents :: BuildOpts -> Target -> Package -> Set NamedComponent
 wantedPackageComponents _ (TargetComps cs) _ = cs
 wantedPackageComponents bopts (TargetAll ProjectPackage) pkg = S.fromList $
     (case packageLibraries pkg of
-       NoLibraries -> []
+       NoLibraries         -> []
        HasLibraries _names -> [CLib]) ++ -- FIXME. This ignores sub libraries and foreign libraries. Is that OK?
     map CExe (S.toList (packageExes pkg)) <>
     (if boptsTests bopts then map CTest (M.keys (packageTests pkg)) else []) <>
@@ -784,7 +786,7 @@ getExtraLoadDeps loadAllDeps sourceMap targets =
     getDeps name =
         case M.lookup name sourceMap of
             Just (PSFiles lp _) -> M.keys (packageDeps (lpPackage lp)) -- FIXME just Local?
-            _ -> []
+            _                   -> []
     go :: PackageName -> State (Map PackageName (Maybe (Path Abs File, Target))) Bool
     go name = do
         cache <- get
@@ -838,9 +840,9 @@ unionTargets = M.unionWith $ \l r ->
 hasLocalComp :: (NamedComponent -> Bool) -> Target -> Bool
 hasLocalComp p t =
     case t of
-        TargetComps s -> any p (S.toList s)
+        TargetComps s            -> any p (S.toList s)
         TargetAll ProjectPackage -> True
-        _ -> False
+        _                        -> False
 
 
 {- Copied from Stack.Ide, may be useful in the future

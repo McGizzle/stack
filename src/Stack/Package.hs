@@ -26,6 +26,7 @@ module Stack.Package
   ,Package(..)
   ,PackageDescriptionPair(..)
   ,GetPackageFiles(..)
+    ,getPackageFiles'
   ,GetPackageOpts(..)
   ,PackageConfig(..)
   ,buildLogPath
@@ -303,12 +304,7 @@ packageFromPackageDescription packageConfig pkgFlags (PackageDescriptionPair pkg
                                     , buildable (buildInfo biBuildInfo)]
     -- This is an action used to collect info needed for "stack ghci".
     -- This info isn't usually needed, so computation of it is deferred.
-    , packageOpts = GetPackageOpts $
-      \sourceMap installedMap omitPkgs addPkgs cabalfp ->
-           do (componentsModules,componentFiles,_,_) <- getPackageFiles pkgFiles cabalfp
-              componentsOpts <-
-                  generatePkgDescOpts sourceMap installedMap omitPkgs addPkgs cabalfp pkg componentFiles
-              return (componentsModules,componentFiles,componentsOpts)
+    , packageOpts = (mempty, mempty, mempty)
     , packageHasExposedModules = maybe
           False
           (not . null . exposedModules)
@@ -335,8 +331,36 @@ packageFromPackageDescription packageConfig pkgFlags (PackageDescriptionPair pkg
     -- Gets all of the modules, files, build files, and data files that
     -- constitute the package. This is primarily used for dirtiness
     -- checking during build, as well as use by "stack ghci"
-    pkgFiles = GetPackageFiles $
-        \cabalfp -> debugBracket ("getPackageFiles" <+> display cabalfp) $ do
+    pkgFiles = WillGetPackageFiles pkg
+    pkgId = package pkg
+    name = fromCabalPackageName (pkgName pkgId)
+    deps = M.filterWithKey (const . not . isMe) (M.union
+        (packageDependencies packageConfig pkg)
+        -- We include all custom-setup deps - if present - in the
+        -- package deps themselves. Stack always works with the
+        -- invariant that there will be a single installed package
+        -- relating to a package name, and this applies at the setup
+        -- dependency level as well.
+        (fromMaybe M.empty msetupDeps))
+    msetupDeps = fmap
+        (M.fromList . map (depName &&& depRange) . setupDepends)
+        (setupBuildInfo pkg)
+
+    -- Is the package dependency mentioned here me: either the package
+    -- name itself, or the name of one of the sub libraries
+    isMe name' = name' == name || packageNameText name' `S.member` extraLibNames
+
+
+-------------------------------------------
+getPackageFiles'
+  :: (MonadReader s m, MonadUnliftIO m, MonadThrow m,
+      HasEnvConfig s) =>
+     Path Abs File
+     -> PackageDescription
+     -> m (Map NamedComponent (Map ModuleName (Path Abs File)),
+           Map NamedComponent (Set DotCabalPath), Set (Path Abs File),
+           [PackageWarning])
+getPackageFiles' cabalfp pkg = debugBracket ("getPackageFiles" <+> display cabalfp) $ do
              let pkgDir = parent cabalfp
              distDir <- distDirFromDir pkgDir
              env <- view envConfigL
@@ -359,23 +383,11 @@ packageFromPackageDescription packageConfig pkgFlags (PackageDescriptionPair pkg
                  hpackExists <- doesFileExist hpackPath
                  return $ if hpackExists then S.singleton hpackPath else S.empty
              return (componentModules, componentFiles, buildFiles <> dataFiles', warnings)
-    pkgId = package pkg
-    name = fromCabalPackageName (pkgName pkgId)
-    deps = M.filterWithKey (const . not . isMe) (M.union
-        (packageDependencies packageConfig pkg)
-        -- We include all custom-setup deps - if present - in the
-        -- package deps themselves. Stack always works with the
-        -- invariant that there will be a single installed package
-        -- relating to a package name, and this applies at the setup
-        -- dependency level as well.
-        (fromMaybe M.empty msetupDeps))
-    msetupDeps = fmap
-        (M.fromList . map (depName &&& depRange) . setupDepends)
-        (setupBuildInfo pkg)
 
-    -- Is the package dependency mentioned here me: either the package
-    -- name itself, or the name of one of the sub libraries
-    isMe name' = name' == name || packageNameText name' `S.member` extraLibNames
+---------------------------------------------
+
+
+
 
 -- | Generate GHC options for the package's components, and a list of
 -- options which apply generally to the package, not one specific

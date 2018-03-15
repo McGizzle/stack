@@ -1,28 +1,34 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE NoImplicitPrelude          #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 module Stack.Types.Package where
 
-import           Stack.Prelude
-import qualified Data.ByteString as S
+import qualified Data.ByteString                   as S
 import           Data.List
-import qualified Data.Map as M
-import qualified Data.Set as Set
-import           Data.Store.Version (VersionConfig)
-import           Data.Store.VersionTagged (storeVersionConfig)
+import qualified Data.Map                          as M
+import qualified Data.Set                          as Set
+import           Data.Store.Version                (VersionConfig)
+import           Data.Store.VersionTagged          (storeVersionConfig)
 import           Distribution.InstalledPackageInfo (PError)
-import           Distribution.License (License)
-import           Distribution.ModuleName (ModuleName)
-import           Distribution.PackageDescription (TestSuiteInterface, BuildType)
-import           Distribution.System (Platform (..))
-import           Path as FL
-import           Stack.Types.BuildPlan (PackageLocation, PackageLocationIndex (..), ExeName)
+import           Distribution.License              (License)
+import           Distribution.ModuleName           (ModuleName)
+import           Distribution.PackageDescription   (BuildType,
+                                                    PackageDescription,
+                                                    TestSuiteInterface)
+import           Distribution.System               (Platform (..))
+import           Path                              as FL
+import           Path                              (Path (..))
+import           Stack.Prelude
+import           Stack.Types.BuildPlan             (ExeName, PackageLocation,
+                                                    PackageLocationIndex (..))
 import           Stack.Types.Compiler
 import           Stack.Types.Config
 import           Stack.Types.FlagName
@@ -31,6 +37,9 @@ import           Stack.Types.NamedComponent
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Version
+
+import           Data.Binary
+
 
 -- | All exceptions thrown by the library.
 data PackageException
@@ -83,31 +92,34 @@ instance Show PackageException where
 data PackageLibraries
   = NoLibraries
   | HasLibraries !(Set Text) -- ^ the foreign library names, sub libraries get built automatically without explicit component name passing
- deriving (Show,Typeable)
+ deriving (Show,Typeable,Generic)
+instance Binary PackageLibraries
 
 -- | Some package info.
 data Package =
-  Package {packageName :: !PackageName                    -- ^ Name of the package.
-          ,packageVersion :: !Version                     -- ^ Version of the package
-          ,packageLicense :: !License                     -- ^ The license the package was released under.
-          ,packageFiles :: !GetPackageFiles               -- ^ Get all files of the package.
-          ,packageDeps :: !(Map PackageName VersionRange) -- ^ Packages that the package depends on.
-          ,packageTools :: !(Map ExeName VersionRange)    -- ^ A build tool name.
-          ,packageAllDeps :: !(Set PackageName)           -- ^ Original dependencies (not sieved).
-          ,packageGhcOptions :: ![Text]                   -- ^ Ghc options used on package.
-          ,packageFlags :: !(Map FlagName Bool)           -- ^ Flags used on package.
-          ,packageDefaultFlags :: !(Map FlagName Bool)    -- ^ Defaults for unspecified flags.
-          ,packageLibraries :: !PackageLibraries          -- ^ does the package have a buildable library stanza?
-          ,packageTests :: !(Map Text TestSuiteInterface) -- ^ names and interfaces of test suites
-          ,packageBenchmarks :: !(Set Text)               -- ^ names of benchmarks
-          ,packageExes :: !(Set Text)                     -- ^ names of executables
-          ,packageOpts :: !GetPackageOpts                 -- ^ Args to pass to GHC.
+  Package {packageName              :: !PackageName                    -- ^ Name of the package.
+          ,packageVersion           :: !Version                     -- ^ Version of the package
+          ,packageLicense           :: !License                     -- ^ The license the package was released under.
+          ,packageFiles             :: !WillGetPackageFiles               -- ^ Get all files of the package.
+          ,packageDeps              :: !(Map PackageName VersionRange) -- ^ Packages that the package depends on.
+          ,packageTools             :: !(Map ExeName VersionRange)    -- ^ A build tool name.
+          ,packageAllDeps           :: !(Set PackageName)           -- ^ Original dependencies (not sieved).
+          ,packageGhcOptions        :: ![Text]                   -- ^ Ghc options used on package.
+          ,packageFlags             :: !(Map FlagName Bool)           -- ^ Flags used on package.
+          ,packageDefaultFlags      :: !(Map FlagName Bool)    -- ^ Defaults for unspecified flags.
+          ,packageLibraries         :: !PackageLibraries          -- ^ does the package have a buildable library stanza?
+          ,packageTests             :: !(Map Text TestSuiteInterface) -- ^ names and interfaces of test suites
+          ,packageBenchmarks        :: !(Set Text)               -- ^ names of benchmarks
+          ,packageExes              :: !(Set Text)                     -- ^ names of executables
+          ,packageOpts              :: !GotPackageOpts                 -- ^ Args to pass to GHC.
           ,packageHasExposedModules :: !Bool              -- ^ Does the package have exposed modules?
-          ,packageBuildType :: !(Maybe BuildType)         -- ^ Package build-type.
-          ,packageSetupDeps :: !(Maybe (Map PackageName VersionRange))
+          ,packageBuildType         :: !(Maybe BuildType)         -- ^ Package build-type.
+          ,packageSetupDeps         :: !(Maybe (Map PackageName VersionRange))
                                                           -- ^ If present: custom-setup dependencies
           }
- deriving (Show,Typeable)
+ deriving (Show,Typeable,Generic)
+
+instance Binary Package
 
 packageIdentifier :: Package -> PackageIdentifier
 packageIdentifier pkg =
@@ -133,22 +145,34 @@ newtype GetPackageOpts = GetPackageOpts
 instance Show GetPackageOpts where
     show _ = "<GetPackageOpts>"
 
+type GotPackageOpts =     (Map NamedComponent (Map ModuleName (Path Abs File))
+                          ,Map NamedComponent (Set DotCabalPath)
+                          ,Map NamedComponent BuildInfoOpts)
+
+
+
 -- | GHC options based on cabal information and ghc-options.
 data BuildInfoOpts = BuildInfoOpts
-    { bioOpts :: [String]
-    , bioOneWordOpts :: [String]
+    { bioOpts         :: [String]
+    , bioOneWordOpts  :: [String]
     , bioPackageFlags :: [String]
     -- ^ These options can safely have 'nubOrd' applied to them, as
     -- there are no multi-word options (see
     -- https://github.com/commercialhaskell/stack/issues/1255)
-    , bioCabalMacros :: Maybe (Path Abs File)
-    } deriving Show
+    , bioCabalMacros  :: Maybe (Path Abs File)
+    } deriving (Show,Generic,Typeable)
+
+instance Binary BuildInfoOpts
 
 -- | Files to get for a cabal package.
 data CabalFileType
     = AllFiles
     | Modules
 
+
+newtype WillGetPackageFiles = WillGetPackageFiles PackageDescription
+        deriving(Show,Generic,Typeable)
+instance Binary WillGetPackageFiles
 -- | Files that the package depends on, relative to package directory.
 -- Argument is the location of the .cabal file
 newtype GetPackageFiles = GetPackageFiles
@@ -166,6 +190,8 @@ instance Show GetPackageFiles where
 -- | Warning generated when reading a package
 data PackageWarning
     = UnlistedModulesWarning (Maybe String) [ModuleName]
+    deriving(Generic, Typeable, Show)
+instance Binary PackageWarning
       -- ^ Modules found that are not listed in cabal file
 
     -- TODO: bring this back - see
@@ -211,39 +237,39 @@ piiVersion (PSFiles lp _) = packageVersion $ lpPackage lp
 piiVersion (PSIndex _ _ _ (PackageIdentifierRevision (PackageIdentifier _ v) _)) = v
 
 piiLocation :: PackageSource -> InstallLocation
-piiLocation (PSFiles _ loc) = loc
+piiLocation (PSFiles _ loc)     = loc
 piiLocation (PSIndex loc _ _ _) = loc
 
 piiPackageLocation :: PackageSource -> PackageLocationIndex FilePath
-piiPackageLocation (PSFiles lp _) = PLOther (lpLocation lp)
+piiPackageLocation (PSFiles lp _)      = PLOther (lpLocation lp)
 piiPackageLocation (PSIndex _ _ _ pir) = PLIndex pir
 
 -- | Information on a locally available package of source code
 data LocalPackage = LocalPackage
-    { lpPackage       :: !Package
+    { lpPackage        :: !Package
     -- ^ The @Package@ info itself, after resolution with package flags,
     -- with tests and benchmarks disabled
-    , lpComponents    :: !(Set NamedComponent)
+    , lpComponents     :: !(Set NamedComponent)
     -- ^ Components to build, not including the library component.
-    , lpUnbuildable   :: !(Set NamedComponent)
+    , lpUnbuildable    :: !(Set NamedComponent)
     -- ^ Components explicitly requested for build, that are marked
     -- "buildable: false".
-    , lpWanted        :: !Bool -- FIXME Should completely drop this "wanted" terminology, it's unclear
+    , lpWanted         :: !Bool -- FIXME Should completely drop this "wanted" terminology, it's unclear
     -- ^ Whether this package is wanted as a target.
-    , lpTestDeps      :: !(Map PackageName VersionRange)
+    , lpTestDeps       :: !(Map PackageName VersionRange)
     -- ^ Used for determining if we can use --enable-tests in a normal build.
-    , lpBenchDeps     :: !(Map PackageName VersionRange)
+    , lpBenchDeps      :: !(Map PackageName VersionRange)
     -- ^ Used for determining if we can use --enable-benchmarks in a normal
     -- build.
-    , lpTestBench     :: !(Maybe Package)
+    , lpTestBench      :: !(Maybe Package)
     -- ^ This stores the 'Package' with tests and benchmarks enabled, if
     -- either is asked for by the user.
-    , lpDir           :: !(Path Abs Dir)
+    , lpDir            :: !(Path Abs Dir)
     -- ^ Directory of the package.
-    , lpCabalFile     :: !(Path Abs File)
+    , lpCabalFile      :: !(Path Abs File)
     -- ^ The .cabal file
-    , lpForceDirty    :: !Bool
-    , lpDirtyFiles    :: !(Maybe (Set FilePath))
+    , lpForceDirty     :: !Bool
+    , lpDirtyFiles     :: !(Maybe (Set FilePath))
     -- ^ Nothing == not dirty, Just == dirty. Note that the Set may be empty if
     -- we forced the build to treat packages as dirty. Also, the Set may not
     -- include all modified files.
@@ -251,10 +277,11 @@ data LocalPackage = LocalPackage
     -- ^ current state of the files
     , lpComponentFiles :: !(Map NamedComponent (Set (Path Abs File)))
     -- ^ all files used by this package
-    , lpLocation      :: !(PackageLocation FilePath)
+    , lpLocation       :: !(PackageLocation FilePath)
     -- ^ Where this source code came from
     }
-    deriving Show
+    deriving (Show, Generic, Typeable)
+instance Binary LocalPackage
 
 lpFiles :: LocalPackage -> Set.Set (Path Abs File)
 lpFiles = Set.unions . M.elems . lpComponentFiles
@@ -264,8 +291,8 @@ data InstallLocation = Snap | Local
     deriving (Show, Eq)
 instance Monoid InstallLocation where
     mempty = Snap
-    mappend Local _ = Local
-    mappend _ Local = Local
+    mappend Local _   = Local
+    mappend _ Local   = Local
     mappend Snap Snap = Snap
 
 data InstalledPackageLocation = InstalledTo InstallLocation | ExtraGlobal
@@ -273,16 +300,18 @@ data InstalledPackageLocation = InstalledTo InstallLocation | ExtraGlobal
 
 data FileCacheInfo = FileCacheInfo
     { fciModTime :: !ModTime
-    , fciSize :: !Word64
-    , fciHash :: !S.ByteString
+    , fciSize    :: !Word64
+    , fciHash    :: !S.ByteString
     }
     deriving (Generic, Show, Eq, Data, Typeable)
 instance Store FileCacheInfo
 instance NFData FileCacheInfo
+instance Binary FileCacheInfo
 
 -- | Used for storage and comparison.
 newtype ModTime = ModTime (Integer,Rational)
   deriving (Ord, Show, Generic, Eq, NFData, Store, Data, Typeable)
+instance Binary ModTime
 
 modTimeVC :: VersionConfig ModTime
 modTimeVC = storeVersionConfig "mod-time-v1" "UBECpUI0JvM_SBOnRNdaiF9_yOU="
@@ -307,12 +336,12 @@ data DotCabalDescriptor
 -- | Maybe get the module name from the .cabal descriptor.
 dotCabalModule :: DotCabalDescriptor -> Maybe ModuleName
 dotCabalModule (DotCabalModule m) = Just m
-dotCabalModule _ = Nothing
+dotCabalModule _                  = Nothing
 
 -- | Maybe get the main name from the .cabal descriptor.
 dotCabalMain :: DotCabalDescriptor -> Maybe FilePath
 dotCabalMain (DotCabalMain m) = Just m
-dotCabalMain _ = Nothing
+dotCabalMain _                = Nothing
 
 -- | A path resolved from the .cabal file, which is either main-is or
 -- an exposed/internal/referenced module.
@@ -321,31 +350,31 @@ data DotCabalPath
     | DotCabalMainPath !(Path Abs File)
     | DotCabalFilePath !(Path Abs File)
     | DotCabalCFilePath !(Path Abs File)
-    deriving (Eq,Ord,Show)
-
+    deriving (Eq,Ord,Show,Generic,Typeable)
+instance Binary DotCabalPath
 -- | Get the module path.
 dotCabalModulePath :: DotCabalPath -> Maybe (Path Abs File)
 dotCabalModulePath (DotCabalModulePath fp) = Just fp
-dotCabalModulePath _ = Nothing
+dotCabalModulePath _                       = Nothing
 
 -- | Get the main path.
 dotCabalMainPath :: DotCabalPath -> Maybe (Path Abs File)
 dotCabalMainPath (DotCabalMainPath fp) = Just fp
-dotCabalMainPath _ = Nothing
+dotCabalMainPath _                     = Nothing
 
 -- | Get the c file path.
 dotCabalCFilePath :: DotCabalPath -> Maybe (Path Abs File)
 dotCabalCFilePath (DotCabalCFilePath fp) = Just fp
-dotCabalCFilePath _ = Nothing
+dotCabalCFilePath _                      = Nothing
 
 -- | Get the path.
 dotCabalGetPath :: DotCabalPath -> Path Abs File
 dotCabalGetPath dcp =
     case dcp of
         DotCabalModulePath fp -> fp
-        DotCabalMainPath fp -> fp
-        DotCabalFilePath fp -> fp
-        DotCabalCFilePath fp -> fp
+        DotCabalMainPath fp   -> fp
+        DotCabalFilePath fp   -> fp
+        DotCabalCFilePath fp  -> fp
 
 type InstalledMap = Map PackageName (InstallLocation, Installed)
 
@@ -356,7 +385,7 @@ data Installed
 
 installedPackageIdentifier :: Installed -> PackageIdentifier
 installedPackageIdentifier (Library pid _ _) = pid
-installedPackageIdentifier (Executable pid) = pid
+installedPackageIdentifier (Executable pid)  = pid
 
 -- | Get the installed Version.
 installedVersion :: Installed -> Version

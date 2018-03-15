@@ -4,11 +4,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 
-module Control.Concurrent.Distributed where
+module Distributed.Execute where
 
 import           Control.Concurrent                                 (threadDelay)
 import           Debug.Trace
 import           Stack.Prelude
+import           Stack.Types.Build
 import           System.IO
 -- CLOUD HASKELL
 import           Control.Distributed.Process                        hiding
@@ -21,6 +22,8 @@ import           Network.Transport.TCP                              (createTrans
 
 import           Control.Concurrent.Types
 import           Data.Binary
+
+import        Distributed.Run                                
 
 data FakeException = FakeException
         deriving(Show)
@@ -40,10 +43,11 @@ worker manager = do
         where
             run manager = receiveWait[match end, match work]
               where
-                work :: String -> Process ()
-                work ad = do
-                  plog "Functions received! "
-                  send manager "I got the functions!"
+                work :: SendTask -> Process ()
+                work stask = do
+                  plog "Work received! "
+                  liftIO $ runTask stask
+                  send manager "I got the Work!"
                   run manager
                 end () = do
                   plog "Bye"
@@ -53,12 +57,11 @@ worker manager = do
 remotable['worker]
 
 rtable :: RemoteTable
-rtable = Control.Concurrent.Distributed.__remoteTable initRemoteTable
+rtable = Distributed.Execute.__remoteTable initRemoteTable
 
-runActionDist :: Action -> ActionContext -> IO ()
-runActionDist action context = do
+runDistributed task = do
         print "Distribution code in action"
-        startManager "127.0.0.1" "5600" action context
+        startManager "127.0.0.1" "5600" task
 
 startWorker :: String -> String -> IO ()
 startWorker host port = do
@@ -66,17 +69,20 @@ startWorker host port = do
         backend <- initializeBackend host port rtable
         startSlave backend
 
-startManager :: String -> String -> Action -> ActionContext -> IO ()
-startManager host port action context = do
+startManager :: String -> String -> Task -> IO ()
+startManager host port task = do
         print "Loading Manager"
+        let stask = convertTask task
         backend <- initializeBackend host port rtable
         startMaster backend $ \ nids -> do
+                liftIO $ print nids
                 me <- getSelfPid
-                let f = actionDo action
                 forM_ nids $ \ nid -> spawn nid $ $(mkClosure 'worker) me
                 pid <- expect
-                send pid ()
-                kill :: String <- expect
+                send pid stask
+                resp :: String <- expect
+                liftIO $ putStrLn resp
+                _ :: String <- expect
                 terminateAllSlaves backend
         return ()
 

@@ -1,30 +1,30 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell     #-}
 
 -- | A wrapper around hoogle.
 module Stack.Hoogle
     ( hoogleCmd
     ) where
 
-import           Stack.Prelude
-import qualified Data.ByteString.Lazy.Char8 as BL8
-import           Data.Char (isSpace)
-import           Data.List (find)
-import qualified Data.Set as Set
-import qualified Data.Text as T
+import qualified Data.ByteString.Lazy.Char8    as BL8
+import           Data.Char                     (isSpace)
+import           Data.List                     (find)
+import qualified Data.Set                      as Set
+import qualified Data.Text                     as T
 import           Lens.Micro
-import           Path.IO hiding (findExecutable)
+import           Path.IO                       hiding (findExecutable)
+import           RIO.Process
 import qualified Stack.Build
 import           Stack.Fetch
+import           Stack.Prelude
 import           Stack.Runners
 import           Stack.Types.Config
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Version
 import           System.Exit
-import           RIO.Process
 
 -- | Hoogle command.
 hoogleCmd :: ([String],Bool,Bool) -> GlobalOpts -> IO ()
@@ -70,7 +70,8 @@ hoogleCmd (args,setup,rebuild) go = withBuildConfig go $ do
                             Stack.Build.build
                                 (const (return ()))
                                 lk
-                                defaultBuildOptsCLI))
+                                defaultBuildOptsCLI
+                                False))
                  (\(_ :: ExitCode) ->
                        return ()))
     hooglePackageName = $(mkPackageName "hoogle")
@@ -129,11 +130,12 @@ hoogleCmd (args,setup,rebuild) go = withBuildConfig go $ do
                                                                id
                                                                id
                                                                hooglePackageIdentifier)]
-                                }))
+                                }
+                                False))
                  (\(e :: ExitCode) ->
                        case e of
                            ExitSuccess -> resetExeCache menv
-                           _ -> throwIO e))
+                           _           -> throwIO e))
     runHoogle :: Path Abs File -> [String] -> RIO EnvConfig ()
     runHoogle hooglePath hoogleArgs = do
         config <- view configL

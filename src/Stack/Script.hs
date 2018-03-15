@@ -1,12 +1,11 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE CPP               #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Stack.Script
     ( scriptCmd
     ) where
 
-import           Stack.Prelude
 import qualified Data.ByteString.Char8      as S8
 import qualified Data.Conduit.List          as CL
 import           Data.List.Split            (splitWhen)
@@ -15,16 +14,17 @@ import qualified Data.Set                   as Set
 import qualified Data.Text                  as T
 import           Path
 import           Path.IO
+import           RIO.Process
 import qualified Stack.Build
 import           Stack.GhcPkg               (ghcPkgExeName)
 import           Stack.Options.ScriptParser
+import           Stack.Prelude
 import           Stack.Runners
 import           Stack.Types.BuildPlan
 import           Stack.Types.Compiler
 import           Stack.Types.Config
 import           Stack.Types.PackageName
 import           System.FilePath            (dropExtension, replaceExtension)
-import           RIO.Process
 
 -- | Run a Stack Script
 scriptCmd :: ScriptOpts -> GlobalOpts -> IO ()
@@ -84,7 +84,7 @@ scriptCmd opts go' = do
                     logDebug "Missing packages, performing installation"
                     Stack.Build.build (const $ return ()) lk defaultBuildOptsCLI
                         { boptsCLITargets = map packageNameText $ Set.toList targetsSet
-                        }
+                        } False
 
         let ghcArgs = concat
                 [ ["-hide-all-packages"]
@@ -95,8 +95,8 @@ scriptCmd opts go' = do
                     $ Set.map packageNameString targetsSet
                 , case soCompile opts of
                     SEInterpret -> []
-                    SECompile -> []
-                    SEOptimize -> ["-O2"]
+                    SECompile   -> []
+                    SEOptimize  -> ["-O2"]
                 , map (\x -> "--ghc-arg=" ++ x) (soGhcOptions opts)
                 ]
         munlockFile lk -- Unlock before transferring control away.

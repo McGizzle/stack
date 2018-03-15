@@ -15,16 +15,15 @@ module Control.Concurrent.Execute
     , runActions
     ) where
 
-import           Control.Concurrent.Distributed
 import           Control.Concurrent.Types
-import System.IO
-
+import  {-# SOURCE #-}         Distributed.Execute           (runDistributed)
+import           System.IO
 
 import           Control.Concurrent
 import           Control.Concurrent.MVar
-import           Control.Concurrent.STM              (retry)
-import           Data.List                           (sortBy)
-import qualified Data.Set                            as Set
+import           Control.Concurrent.STM        (retry)
+import           Data.List                     (head, sortBy)
+import qualified Data.Set                      as Set
 import           Stack.Prelude
 import           Stack.Types.PackageIdentifier
 
@@ -37,17 +36,21 @@ runActions :: Int -- ^ threads
            -> (TVar Int -> TVar (Set ActionId) -> IO ()) -- ^ progress updated
            -> IO [SomeException]
 runActions threads keepGoing actions0 lock withProgress = do
-    es <- ExecuteState
-        <$> newTVarIO (sortActions actions0)
-        <*> newTVarIO []
-        <*> newTVarIO Set.empty
-        <*> newTVarIO 0
-        <*> pure keepGoing
-    _ <- async $ withProgress (esCompleted es) (esInAction es)
-    if threads <= 1
-       then runActions' es lock
-        else replicateConcurrently_ threads $ runActions' es lock
-    readTVarIO $ esExceptions es
+    case actions0 of
+      [a,b,c] -> do
+              es <- ExecuteState
+                <$> newTVarIO (sortActions [a,b])
+                <*> newTVarIO []
+                <*> newTVarIO Set.empty
+                <*> newTVarIO 0
+                <*> pure keepGoing
+              _ <- async $ withProgress (esCompleted es) (esInAction es)
+              if threads <= 1
+                  then runActions' es lock
+                  else replicateConcurrently_ threads $ runActions' es lock
+              exs <- readTVarIO $ esExceptions es
+              runDistributed $ actionTask c
+              return exs
 
 -- | Sort actions such that those that can't be run concurrently are at
 -- the end.
@@ -63,10 +66,7 @@ sortActions = sortBy (compareConcurrency `on` actionConcurrency)
 
 runActions' :: ExecuteState -> MVar () -> IO ()
 runActions' ExecuteState {..} lock = do
-    Control.Concurrent.MVar.takeMVar lock
-    print "runActions' called"
-    runActionDist
-    Control.Concurrent.MVar.putMVar lock ()
+
     loop
   where
     breakOnErrs inner = do
@@ -109,8 +109,7 @@ runActions' ExecuteState {..} lock = do
                        mask' :: [Action] -> Set ActionId -> IO ()
                        mask' as' remaining = mask $ \restore -> do
                         let context = ActionContext remaining (downstreamActions (actionId action) as') (actionConcurrency action)
-                        --eres <- try $ restore $ actionDo action context
-                        eres <- runActionDist action context
+                        eres <- try $ restore $ actionDo action context
                         atomically $ do
                           modifyTVar esInAction (Set.delete $ actionId action)
                           modifyTVar esCompleted (+1)

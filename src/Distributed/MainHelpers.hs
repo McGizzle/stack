@@ -13,11 +13,11 @@
 
 -- | Main stack tool entry point.
 
-module Main (main) where
+module Distributed.MainHelpers where
 
-#ifndef HIDE_DEP_VERSIONS
-import qualified Build_stack
-#endif
+
+import Control.Concurrent.Distributed
+
 import           Stack.Prelude
 import           Control.Monad.Reader (local)
 import           Control.Monad.Trans.Except (ExceptT)
@@ -143,7 +143,7 @@ versionString' =
 #ifdef HIDE_DEP_VERSIONS
     depsString = " hpack-" ++ VERSION_hpack
 #else
-    depsString = "\nCompiled with:\n" ++ unlines (map ("- " ++) Build_stack.deps)
+    depsString = "\nCompiled with:\n" ++ unlines (map ("- " ++) ["Dunno"])
 #endif
 #ifdef SUPPORTED_BUILD
     warningString = ""

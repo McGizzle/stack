@@ -60,6 +60,7 @@ import qualified System.FilePath as FP
 import qualified System.Clock as Clock
 import qualified System.Process.Typed as P
 import           System.Process.Typed hiding (withProcess, withProcess_)
+import Debug.Trace
 
 #ifndef WINDOWS
 import qualified System.Process.PID1 as PID1
@@ -187,7 +188,7 @@ withProc
 withProc name0 args inner = do
   menv <- view envOverrideL
   name <- preProcess name0
-
+  liftIO $ traceIO name0
   withProcessTimeLog (toFilePath <$> eoWorkingDir menv) name args
     $ inner
     $ setEnv (envHelper menv)

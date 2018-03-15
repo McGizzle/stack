@@ -1,8 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TemplateHaskell       #-}
@@ -12,31 +12,31 @@ module Stack.Upgrade
     , upgradeOpts
     ) where
 
-import           Stack.Prelude               hiding (force)
-import qualified Data.HashMap.Strict         as HashMap
+import qualified Data.HashMap.Strict           as HashMap
 import qualified Data.List
-import qualified Data.Map                    as Map
-import qualified Data.Text as T
-import           Distribution.Version        (mkVersion')
-import           Lens.Micro                  (set)
+import qualified Data.Map                      as Map
+import qualified Data.Text                     as T
+import           Distribution.Version          (mkVersion')
+import           Lens.Micro                    (set)
 import           Options.Applicative
 import           Path
-import qualified Paths_stack as Paths
+import qualified Paths_stack                   as Paths
+import           RIO.Process
 import           Stack.Build
 import           Stack.Config
 import           Stack.Fetch
 import           Stack.PackageIndex
+import           Stack.Prelude                 hiding (force)
 import           Stack.PrettyPrint
 import           Stack.Setup
+import           Stack.Types.Config
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageIndex
 import           Stack.Types.PackageName
-import           Stack.Types.Version
-import           Stack.Types.Config
 import           Stack.Types.Resolver
-import           System.Exit                 (ExitCode (ExitSuccess))
-import           System.Process              (rawSystem, readProcess)
-import           RIO.Process
+import           Stack.Types.Version
+import           System.Exit                   (ExitCode (ExitSuccess))
+import           System.Process                (rawSystem, readProcess)
 
 upgradeOpts :: Parser UpgradeOpts
 upgradeOpts = UpgradeOpts
@@ -81,13 +81,13 @@ upgradeOpts = UpgradeOpts
                    <> showDefault ))
 
 data BinaryOpts = BinaryOpts
-    { _boPlatform :: !(Maybe String)
-    , _boForce :: !Bool
+    { _boPlatform   :: !(Maybe String)
+    , _boForce      :: !Bool
     -- ^ force a download, even if the downloaded version is older
     -- than what we are
-    , _boVersion :: !(Maybe String)
+    , _boVersion    :: !(Maybe String)
     -- ^ specific version to download
-    , _boGithubOrg :: !(Maybe String)
+    , _boGithubOrg  :: !(Maybe String)
     , _boGithubRepo :: !(Maybe String)
     }
     deriving Show
@@ -133,14 +133,14 @@ binaryUpgrade (BinaryOpts mplatform force' mver morg mrepo) = do
     platforms0 <-
       case mplatform of
         Nothing -> preferredPlatforms
-        Just p -> return [("windows" `T.isInfixOf` T.pack p, p)]
+        Just p  -> return [("windows" `T.isInfixOf` T.pack p, p)]
     archiveInfo <- downloadStackReleaseInfo morg mrepo mver
 
     let mdownloadVersion = getDownloadVersion archiveInfo
         force =
           case mver of
             Nothing -> force'
-            Just _ -> True -- specifying a version implies we're forcing things
+            Just _  -> True -- specifying a version implies we're forcing things
     isNewer <-
         case mdownloadVersion of
             Nothing -> do
@@ -249,4 +249,4 @@ sourceUpgrade gConfigMonoid mresolver builtHash (SourceOpts gitRepo) =
         runRIO (set (buildOptsL.buildOptsInstallExesL) True envConfig1) $
             build (const $ return ()) Nothing defaultBuildOptsCLI
                 { boptsCLITargets = ["stack"]
-                }
+                } False

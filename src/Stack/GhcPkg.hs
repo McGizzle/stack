@@ -40,6 +40,8 @@ import           Stack.Types.Version
 import           System.FilePath (searchPathSeparator)
 import           RIO.Process
 
+import Debug.Trace
+
 -- | Get the global package database
 getGlobalDB :: HasEnvOverride env
             => WhichCompiler -> RIO env (Path Abs Dir)
@@ -81,6 +83,7 @@ createDatabase
   :: HasEnvOverride env
   => WhichCompiler -> Path Abs Dir -> RIO env ()
 createDatabase wc db = do
+    liftIO $ traceIO "inside createDatabase"
     exists <- doesFileExist (db </> $(mkRelFile "package.cache"))
     unless exists $ do
         -- ghc-pkg requires that the database directory does not exist
