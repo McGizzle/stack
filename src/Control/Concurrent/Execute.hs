@@ -16,7 +16,7 @@ module Control.Concurrent.Execute
     ) where
 
 import           Control.Concurrent.Types
-import  {-# SOURCE #-}         Distributed.Execute           (runDistributed)
+import {-# SOURCE #-}           Distributed.Execute           (runDistributed)
 import           System.IO
 
 import           Control.Concurrent
@@ -36,21 +36,24 @@ runActions :: Int -- ^ threads
            -> (TVar Int -> TVar (Set ActionId) -> IO ()) -- ^ progress updated
            -> IO [SomeException]
 runActions threads keepGoing actions0 lock withProgress = do
-    case actions0 of
-      [a,b,c] -> do
-              es <- ExecuteState
-                <$> newTVarIO (sortActions [a,b])
-                <*> newTVarIO []
-                <*> newTVarIO Set.empty
-                <*> newTVarIO 0
-                <*> pure keepGoing
-              _ <- async $ withProgress (esCompleted es) (esInAction es)
-              if threads <= 1
-                  then runActions' es lock
-                  else replicateConcurrently_ threads $ runActions' es lock
-              exs <- readTVarIO $ esExceptions es
-              runDistributed $ actionTask c
-              return exs
+        runDistributed $ actionTask $ head actions0
+        return []
+
+    --case actions0 of
+    --  (x:xs) -> do
+    --          es <- ExecuteState
+    --            <$> newTVarIO (sortActions xs)
+    --            <*> newTVarIO []
+    --            <*> newTVarIO Set.empty
+    --            <*> newTVarIO 0
+    --            <*> pure keepGoing
+    --          _ <- async $ withProgress (esCompleted es) (esInAction es)
+    --          if threads <= 1
+    --              then runActions' es lock
+    --              else replicateConcurrently_ threads $ runActions' es lock
+    --          exs <- readTVarIO $ esExceptions es
+    --          runDistributed $ actionTask x
+    --          return exs
 
 -- | Sort actions such that those that can't be run concurrently are at
 -- the end.

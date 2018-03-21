@@ -7,6 +7,7 @@
 module Distributed.Execute where
 
 import           Control.Concurrent                                 (threadDelay)
+import           Control.Monad                                      (when)
 import           Debug.Trace
 import           Stack.Prelude
 import           Stack.Types.Build
@@ -23,7 +24,7 @@ import           Network.Transport.TCP                              (createTrans
 import           Control.Concurrent.Types
 import           Data.Binary
 
-import        Distributed.Run                                
+import           Distributed.Run
 
 data FakeException = FakeException
         deriving(Show)
@@ -72,19 +73,24 @@ startWorker host port = do
 startManager :: String -> String -> Task -> IO ()
 startManager host port task = do
         print "Loading Manager"
-        let stask = convertTask task
-        backend <- initializeBackend host port rtable
-        startMaster backend $ \ nids -> do
-                liftIO $ print nids
-                me <- getSelfPid
-                forM_ nids $ \ nid -> spawn nid $ $(mkClosure 'worker) me
-                pid <- expect
-                send pid stask
-                resp :: String <- expect
-                liftIO $ putStrLn resp
-                _ :: String <- expect
-                terminateAllSlaves backend
+        loop
         return ()
+         where
+           loop = do
+                   backend <- initializeBackend host port rtable
+                   startMaster backend $ \ nids -> do
+                        liftIO $ print "Searching for worker..."
+                        when (null nids) $ liftIO $ print "No lads about :( ffs"
+                        liftIO $ print nids
+                        me <- getSelfPid
+                        forM_ nids $ \ nid -> spawn nid $ $(mkClosure 'worker) me
+                        pid <- expect
+                        let stask = convertTask task
+                        send pid stask
+                        resp :: String <- expect
+                        liftIO $ putStrLn resp
+                        _ :: String <- expect
+                        terminateAllSlaves backend
 
 ----------------------------------------------------------------------------------
 

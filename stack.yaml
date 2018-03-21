@@ -4,6 +4,12 @@ flags:
   stack:
     hide-dependency-versions: true
     supported-build: true
+docker:
+  enable: true
+image:
+  container:
+    name: "mystack"
+    base: "mystack-base"
 nix:
   packages:
   - zlib
