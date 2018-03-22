@@ -1,0 +1,6 @@
+stack-worker:
+  image: mystack:latest
+  command: bash -c "stack setup && cd testbuild && echo 'Starting worker...' && worker 127.0.0.1 5001"
+  ports:
+    - "5001:5001"
+  net: "host" 
