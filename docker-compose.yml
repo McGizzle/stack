@@ -1,0 +1,16 @@
+stack-sit:
+  image: mystack:latest
+  command: bash -c "cd testbuild && stack build --allow-different-user --stack-root /testbuild/root && distributed sit 127.0.0.1 5000"
+  tty: true
+  stdin_open: true
+  net: "host"
+  ports: 
+    - "5000:5000"
+stack-build:
+  image: mystack:latest
+  command: bash -c "cd testbuild && distributed build 127.0.0.1 5001" 
+  tty: true
+  stdin_open: true
+  net: "host"
+  ports:
+    - "5001:5001"
