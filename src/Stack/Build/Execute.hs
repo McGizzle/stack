@@ -1184,7 +1184,6 @@ withSingleContext ActionContext {..} ExecuteEnv {..} task@Task {..} mdeps msuffi
                     runAndOutput :: CompilerVersion 'CVActual -> RIO env ()
                     runAndOutput compilerVer = do
                             --- DEBUG
-                      --liftIO $ D.copyFile (toFilePath exeName) "PleaseFuckingSaveThis"
                       withWorkingDir pkgDir $ withEnvOverride menv $ case mlogFile of
                         Just (_, h) ->
                             withProc (toFilePath exeName) fullArgs $ runProcess_

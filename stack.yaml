@@ -3,13 +3,12 @@ packages:
 - .
 - subs/rio
 
-# docker:
-#   enable: true
-#   repo: fpco/stack-full
-# image:
-#   containers:
-#     - base: "fpco/stack-base" # see ./etc/docker/stack-base/Dockerfile
-#       name: "fpco/stack-test"
+docker:
+  enable: false
+image:
+  container:
+    name: "mystack"
+    base: "mystack-base"
 nix:
   # --nix on the command-line to enable.
   enable: false
@@ -34,6 +33,12 @@ extra-deps:
 - smallcheck-1.1.3
 - conduit-extra-1.2.3.1
 - typed-process-0.2.1.0
+#
+- network-transport-0.5.2
+- network-transport-tcp-0.6.0
+- distributed-process-0.7.3
+- distributed-process-simplelocalnet-0.2.4
+- dirstream-1.0.3
 
 # https://github.com/commercialhaskell/stack/issues/3785
 - ansi-terminal-0.8

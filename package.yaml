@@ -34,6 +34,16 @@ ghc-options:
 - -fwarn-incomplete-uni-patterns
 - -fwarn-incomplete-record-updates
 dependencies:
+- network-info
+- network
+- distributed-process
+- distributed-process-simplelocalnet
+- pipes
+- pipes-safe
+- dirstream
+- system-fileio
+- system-filepath
+#
 - Cabal
 - aeson
 - annotated-wl-pprint
@@ -273,6 +283,11 @@ library:
     else:
       source-dirs: src/unix/
 executables:
+  distributed:
+    main: Main.hs
+    source-dirs: src/Distributed
+    dependencies:
+            #    - stack
   stack:
     main: Main.hs
     source-dirs: src/main

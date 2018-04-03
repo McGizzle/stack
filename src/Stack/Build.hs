@@ -11,15 +11,14 @@
 {-# LANGUAGE TupleSections         #-}
 
 -- | Build the project.
-
 module Stack.Build
-  (build
-  ,loadPackage
-  ,mkBaseConfigOpts
-  ,queryBuildInfo
-  ,splitObjsWarning
-  ,CabalVersionException(..))
-  where
+    ( build
+    , loadPackage
+    , mkBaseConfigOpts
+    , queryBuildInfo
+    , splitObjsWarning
+    , CabalVersionException(..)
+    ) where
 
 import           Data.Aeson                    (Value (Array, Object), object,
                                                 (.=))
@@ -54,150 +53,170 @@ import           Stack.Types.Package
 import           Stack.Types.PackageIdentifier
 import           Stack.Types.PackageName
 import           Stack.Types.Version
-
 #ifdef WINDOWS
 import           Stack.Types.Compiler
 #endif
 import           System.FileLock               (FileLock, unlockFile)
-
 #ifdef WINDOWS
 import           System.Win32.Console          (getConsoleCP,
                                                 getConsoleOutputCP,
                                                 setConsoleCP,
                                                 setConsoleOutputCP)
 #endif
-
 -- | Build.
 --
 --   If a buildLock is passed there is an important contract here.  That lock must
 --   protect the snapshot, and it must be safe to unlock it if there are no further
 --   modifications to the snapshot to be performed by this build.
-build :: HasEnvConfig env
-      => (Set (Path Abs File) -> IO ()) -- ^ callback after discovering all local files
-      -> Maybe FileLock
-      -> BuildOptsCLI
-      -> RIO env ()
-build setLocalFiles mbuildLk boptsCli = fixCodePage $ do
-    bopts <- view buildOptsL
-    let profiling = boptsLibProfile bopts || boptsExeProfile bopts
-    let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)
-
+build ::
+       HasEnvConfig env
+    => (Set (Path Abs File) -> IO ()) -- ^ callback after discovering all local files
+    -> Maybe FileLock
+    -> BuildOptsCLI
+    -> RIO env ()
+build setLocalFiles mbuildLk boptsCli =
+    fixCodePage $ do
+        bopts <- view buildOptsL
+        let profiling = boptsLibProfile bopts || boptsExeProfile bopts
+        let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)
     -- targets = [testbuild]
     -- ls = loaded snapshot
     -- locals = local package (includes lpDirty)
     -- extrasToBuild = []
     -- sourceMap = similar to ls, contains packages and their hashes?
-    (targets, ls, locals, extraToBuild, sourceMap) <- loadSourceMapFull NeedTargets boptsCli
-
+        (targets, ls, locals, extraToBuild, sourceMap) <-
+            loadSourceMapFull NeedTargets boptsCli
     --logInfo $ T.pack $ "\nBuild -> build -> targets: " ++ show (Map.keys targets)
-
     -- Set local files, necessary for file watching
-    stackYaml <- view stackYamlL
+        stackYaml <- view stackYamlL
     -- Whats going on here ?
-    liftIO $ setLocalFiles
-           $ Set.insert stackYaml
-           $ Set.unions
+        liftIO $
+            setLocalFiles $
+            Set.insert stackYaml $
+            Set.unions
              -- The `locals` value above only contains local project
              -- packages, not local dependencies. This will get _all_
              -- of the local files we're interested in
              -- watching. Arguably, we should not bother watching repo
              -- and archive files, since those shouldn't
              -- change. That's a possible optimization to consider.
-             [lpFiles lp | PSFiles lp _ <- Map.elems sourceMap]
-
+                [lpFiles lp | PSFiles lp _ <- Map.elems sourceMap]
     -- installedMap = map of installed packages
     -- globalDumpPkgs = looks like a load of packages with install location
     -- snapshotDumpPkgs =
     -- localDumpPkgs = []
-    (installedMap, globalDumpPkgs, snapshotDumpPkgs, localDumpPkgs) <-
-        getInstalled
-                     GetInstalledOpts
-                         { getInstalledProfiling = profiling
-                         , getInstalledHaddock   = shouldHaddockDeps bopts
-                         , getInstalledSymbols   = symbols }
-                     sourceMap
-
-    --logInfo $ T.pack $ "\n\nBuild -> build -> globalDumpPkgs: " ++ show localDumpPkgs ++ "\n\n"
-
-    baseConfigOpts <- mkBaseConfigOpts boptsCli
-    plan <- constructPlan ls baseConfigOpts locals extraToBuild localDumpPkgs loadPackage sourceMap installedMap (boptsCLIInitialBuildSteps boptsCli)
+        (installedMap, globalDumpPkgs, snapshotDumpPkgs, localDumpPkgs) <-
+            getInstalled
+                GetInstalledOpts
+                { getInstalledProfiling = profiling
+                , getInstalledHaddock = shouldHaddockDeps bopts
+                , getInstalledSymbols = symbols
+                }
+                sourceMap
+        logInfo $
+            T.pack $
+            "\n\nBuild -> build -> installedMap: " ++
+            show installedMap ++ "\n\n"
+        logInfo $
+            T.pack $
+            "\n\nBuild -> build -> globalDumpPkgs: " ++
+            show globalDumpPkgs ++ "\n\n"
+        logInfo $
+            T.pack $
+            "\n\nBuild -> build -> snapshotDumpPkgs: " ++
+            show snapshotDumpPkgs ++ "\n\n"
+        logInfo $
+            T.pack $
+            "\n\nBuild -> build -> localDumpPkgs: " ++
+            show localDumpPkgs ++ "\n\n"
+        baseConfigOpts <- mkBaseConfigOpts boptsCli
+        plan <-
+            constructPlan
+                ls
+                baseConfigOpts
+                locals
+                extraToBuild
+                localDumpPkgs
+                loadPackage
+                sourceMap
+                installedMap
+                (boptsCLIInitialBuildSteps boptsCli)
     --liftIO $ traceIO $ "\nPlan -> " ++ show plan
     --logInfo $ T.pack $ "Build -> build -> plan: " ++ show installedMap
-
-    allowLocals <- view $ configL.to configAllowLocals
-    unless allowLocals $ case justLocals plan of
-      []           -> return ()
-      localsIdents -> throwM $ LocalPackagesPresent localsIdents
-
+        allowLocals <- view $ configL . to configAllowLocals
+        unless allowLocals $
+            case justLocals plan of
+                []           -> return ()
+                localsIdents -> throwM $ LocalPackagesPresent localsIdents
     -- If our work to do is all local, let someone else have a turn with the snapshot.
     -- They won't damage what's already in there.
-    case (mbuildLk, allLocal plan) of
+        case (mbuildLk, allLocal plan)
        -- NOTE: This policy is too conservative.  In the future we should be able to
        -- schedule unlocking as an Action that happens after all non-local actions are
        -- complete.
        --
        -- THis build aint 'all local' takes second case
-      (Just lk,True) -> do logInfo "All installs are local; releasing snapshot lock early."
-                           liftIO $ unlockFile lk
-      _ -> return ()
-
-    checkCabalVersion
-    warnAboutSplitObjs bopts
-    warnIfExecutablesWithSameNameCouldBeOverwritten locals plan
-
-    when (boptsPreFetch bopts) $
-        preFetch plan
-    logInfo "\nPrinting Plan"
-    printPlan plan
-    logInfo "\n"
-    if boptsCLIDryrun boptsCli
-        then printPlan plan
-        else executePlan boptsCli baseConfigOpts locals
-                         globalDumpPkgs
-                         snapshotDumpPkgs
-                         localDumpPkgs
-                         installedMap
-                         targets
-                         plan
+              of
+            (Just lk, True) -> do
+                logInfo "All installs are local; releasing snapshot lock early."
+                liftIO $ unlockFile lk
+            _ -> return ()
+        checkCabalVersion
+        warnAboutSplitObjs bopts
+        warnIfExecutablesWithSameNameCouldBeOverwritten locals plan
+        when (boptsPreFetch bopts) $ preFetch plan
+        logInfo "\nPrinting Plan"
+        printPlan plan
+        logInfo "\n"
+        if boptsCLIDryrun boptsCli
+            then printPlan plan
+            else executePlan
+                     boptsCli
+                     baseConfigOpts
+                     locals
+                     globalDumpPkgs
+                     snapshotDumpPkgs
+                     localDumpPkgs
+                     installedMap
+                     targets
+                     plan
 
 -- | If all the tasks are local, they don't mutate anything outside of our local directory.
 allLocal :: Plan -> Bool
-allLocal =
-    all (== Local) .
-    map taskLocation .
-    Map.elems .
-    planTasks
+allLocal = all (== Local) . map taskLocation . Map.elems . planTasks
 
 justLocals :: Plan -> [PackageIdentifier]
 justLocals =
     map taskProvides .
-    filter ((== Local) . taskLocation) .
-    Map.elems .
-    planTasks
+    filter ((== Local) . taskLocation) . Map.elems . planTasks
 
 checkCabalVersion :: HasEnvConfig env => RIO env ()
 checkCabalVersion = do
-    allowNewer <- view $ configL.to configAllowNewer
+    allowNewer <- view $ configL . to configAllowNewer
     cabalVer <- view cabalVersionL
     -- https://github.com/haskell/cabal/issues/2023
-    when (allowNewer && cabalVer < $(mkVersion "1.22")) $ throwM $
+    when (allowNewer && cabalVer < $(mkVersion "1.22")) $
+        throwM $
         CabalVersionException $
-            "Error: --allow-newer requires at least Cabal version 1.22, but version " ++
-            versionString cabalVer ++
-            " was found."
+        "Error: --allow-newer requires at least Cabal version 1.22, but version " ++
+        versionString cabalVer ++ " was found."
 
-newtype CabalVersionException = CabalVersionException { unCabalVersionException :: String }
-    deriving (Typeable)
+newtype CabalVersionException = CabalVersionException
+    { unCabalVersionException :: String
+    } deriving (Typeable)
 
-instance Show CabalVersionException where show = unCabalVersionException
+instance Show CabalVersionException where
+    show = unCabalVersionException
+
 instance Exception CabalVersionException
 
 -- | See https://github.com/commercialhaskell/stack/issues/1198.
-warnIfExecutablesWithSameNameCouldBeOverwritten
-    :: HasLogFunc env => [LocalPackage] -> Plan -> RIO env ()
+warnIfExecutablesWithSameNameCouldBeOverwritten ::
+       HasLogFunc env => [LocalPackage] -> Plan -> RIO env ()
 warnIfExecutablesWithSameNameCouldBeOverwritten locals plan = do
-    logDebug "Checking if we are going to build multiple executables with the same name"
-    forM_ (Map.toList warnings) $ \(exe,(toBuild,otherLocals)) -> do
+    logDebug
+        "Checking if we are going to build multiple executables with the same name"
+    forM_ (Map.toList warnings) $ \(exe, (toBuild, otherLocals)) -> do
         let exe_s
                 | length toBuild > 1 = "several executables with the same name:"
                 | otherwise = "executable"
@@ -206,16 +225,16 @@ warnIfExecutablesWithSameNameCouldBeOverwritten locals plan = do
                     ", "
                     ["'" <> packageNameText p <> ":" <> exe <> "'" | p <- pkgs]
         (logWarn . T.unlines . concat)
-            [ [ "Building " <> exe_s <> " " <> exesText toBuild <> "." ]
+            [ ["Building " <> exe_s <> " " <> exesText toBuild <> "."]
             , [ "Only one of them will be available via 'stack exec' or locally installed."
               | length toBuild > 1
               ]
             , [ "Other executables with the same name might be overwritten: " <>
-                exesText otherLocals <> "."
+              exesText otherLocals <>
+              "."
               | not (null otherLocals)
               ]
             ]
-  where
     -- Cases of several local packages having executables with the same name.
     -- The Map entries have the following form:
     --
@@ -223,17 +242,19 @@ warnIfExecutablesWithSameNameCouldBeOverwritten locals plan = do
     --                   , package names for other local packages that have an
     --                     executable with the same name
     --                   )
-    warnings :: Map Text ([PackageName],[PackageName])
+  where
+    warnings :: Map Text ([PackageName], [PackageName])
     warnings =
         Map.mapMaybe
-            (\(pkgsToBuild,localPkgs) ->
-                case (pkgsToBuild,NE.toList localPkgs \\ NE.toList pkgsToBuild) of
-                    (_ :| [],[]) ->
+            (\(pkgsToBuild, localPkgs) ->
+                 case ( pkgsToBuild
+                      , NE.toList localPkgs \\ NE.toList pkgsToBuild) of
+                     (_ :| [], [])
                         -- We want to build the executable of single local package
                         -- and there are no other local packages with an executable of
                         -- the same name. Nothing to warn about, ignore.
-                        Nothing
-                    (_,otherLocals) ->
+                      -> Nothing
+                     (_, otherLocals)
                         -- We could be here for two reasons (or their combination):
                         -- 1) We are building two or more executables with the same
                         --    name that will end up overwriting each other.
@@ -241,42 +262,47 @@ warnIfExecutablesWithSameNameCouldBeOverwritten locals plan = do
                         --    there are other local packages with an executable of the
                         --    same name that might get overwritten.
                         -- Both cases warrant a warning.
-                        Just (NE.toList pkgsToBuild,otherLocals))
+                      -> Just (NE.toList pkgsToBuild, otherLocals))
             (Map.intersectionWith (,) exesToBuild localExes)
     exesToBuild :: Map Text (NonEmpty PackageName)
     exesToBuild =
         collect
-            [ (exe,pkgName)
-            | (pkgName,task) <- Map.toList (planTasks plan)
+            [ (exe, pkgName)
+            | (pkgName, task) <- Map.toList (planTasks plan)
             , TTFiles lp _ <- [taskType task] -- FIXME analyze logic here, do we need to check for Local?
             , exe <- (Set.toList . exeComponents . lpComponents) lp
             ]
     localExes :: Map Text (NonEmpty PackageName)
     localExes =
         collect
-            [ (exe,packageName pkg)
+            [ (exe, packageName pkg)
             | pkg <- map lpPackage locals
             , exe <- Set.toList (packageExes pkg)
             ]
-    collect :: Ord k => [(k,v)] -> Map k (NonEmpty v)
+    collect :: Ord k => [(k, v)] -> Map k (NonEmpty v)
     collect = Map.map NE.fromList . Map.fromDistinctAscList . groupSort
 
 warnAboutSplitObjs :: HasLogFunc env => BuildOpts -> RIO env ()
-warnAboutSplitObjs bopts | boptsSplitObjs bopts = do
-    logWarn $ "Building with --split-objs is enabled. " <> T.pack splitObjsWarning
+warnAboutSplitObjs bopts
+    | boptsSplitObjs bopts = do
+        logWarn $
+            "Building with --split-objs is enabled. " <> T.pack splitObjsWarning
 warnAboutSplitObjs _ = return ()
 
 splitObjsWarning :: String
-splitObjsWarning = unwords
-     [ "Note that this feature is EXPERIMENTAL, and its behavior may be changed and improved."
-     , "You will need to clean your workdirs before use. If you want to compile all dependencies"
-     , "with split-objs, you will need to delete the snapshot (and all snapshots that could"
-     , "reference that snapshot)."
-     ]
+splitObjsWarning =
+    unwords
+        [ "Note that this feature is EXPERIMENTAL, and its behavior may be changed and improved."
+        , "You will need to clean your workdirs before use. If you want to compile all dependencies"
+        , "with split-objs, you will need to delete the snapshot (and all snapshots that could"
+        , "reference that snapshot)."
+        ]
 
 -- | Get the @BaseConfigOpts@ necessary for constructing configure options
-mkBaseConfigOpts :: (MonadIO m, MonadReader env m, HasEnvConfig env, MonadThrow m)
-                 => BuildOptsCLI -> m BaseConfigOpts
+mkBaseConfigOpts ::
+       (MonadIO m, MonadReader env m, HasEnvConfig env, MonadThrow m)
+    => BuildOptsCLI
+    -> m BaseConfigOpts
 mkBaseConfigOpts boptsCli = do
     bopts <- view buildOptsL
     snapDBPath <- packageDatabaseDeps
@@ -284,7 +310,8 @@ mkBaseConfigOpts boptsCli = do
     snapInstallRoot <- installationRootDeps
     localInstallRoot <- installationRootLocal
     packageExtraDBs <- packageDatabaseExtra
-    return BaseConfigOpts
+    return
+        BaseConfigOpts
         { bcoSnapDB = snapDBPath
         , bcoLocalDB = localDBPath
         , bcoSnapInstallRoot = snapInstallRoot
@@ -295,33 +322,34 @@ mkBaseConfigOpts boptsCli = do
         }
 
 -- | Provide a function for loading package information from the package index
-loadPackage
-  :: HasEnvConfig env
-  => PackageLocationIndex FilePath
-  -> Map FlagName Bool
-  -> [Text]
-  -> RIO env Package
+loadPackage ::
+       HasEnvConfig env
+    => PackageLocationIndex FilePath
+    -> Map FlagName Bool
+    -> [Text]
+    -> RIO env Package
 loadPackage loc flags ghcOptions = do
-  compiler <- view actualCompilerVersionL
-  platform <- view platformL
-  root <- view projectRootL
-  let pkgConfig = PackageConfig
-        { packageConfigEnableTests = False
-        , packageConfigEnableBenchmarks = False
-        , packageConfigFlags = flags
-        , packageConfigGhcOptions = ghcOptions
-        , packageConfigCompilerVersion = compiler
-        , packageConfigPlatform = platform
-        }
-  resolvePackage pkgConfig <$> parseSingleCabalFileIndex root loc
+    compiler <- view actualCompilerVersionL
+    platform <- view platformL
+    root <- view projectRootL
+    let pkgConfig =
+            PackageConfig
+            { packageConfigEnableTests = False
+            , packageConfigEnableBenchmarks = False
+            , packageConfigFlags = flags
+            , packageConfigGhcOptions = ghcOptions
+            , packageConfigCompilerVersion = compiler
+            , packageConfigPlatform = platform
+            }
+    resolvePackage pkgConfig <$> parseSingleCabalFileIndex root loc
 
 -- | Set the code page for this process as necessary. Only applies to Windows.
 -- See: https://github.com/commercialhaskell/stack/issues/738
 fixCodePage :: HasEnvConfig env => RIO env a -> RIO env a
 #ifdef WINDOWS
 fixCodePage inner = do
-    mcp <- view $ configL.to configModifyCodePage
-    ghcVersion <- view $ actualCompilerVersionL.to getGhcVersion
+    mcp <- view $ configL . to configModifyCodePage
+    ghcVersion <- view $ actualCompilerVersionL . to getGhcVersion
     if mcp && ghcVersion < $(mkVersion "7.10.3")
         then fixCodePage'
         -- GHC >=7.10.3 doesn't need this code page hack.
@@ -330,47 +358,45 @@ fixCodePage inner = do
     fixCodePage' = do
         origCPI <- liftIO getConsoleCP
         origCPO <- liftIO getConsoleOutputCP
-
         let setInput = origCPI /= expected
             setOutput = origCPO /= expected
             fixInput
-                | setInput = bracket_
-                    (liftIO $ do
-                        setConsoleCP expected)
-                    (liftIO $ setConsoleCP origCPI)
+                | setInput =
+                    bracket_
+                        (liftIO $ do setConsoleCP expected)
+                        (liftIO $ setConsoleCP origCPI)
                 | otherwise = id
             fixOutput
-                | setOutput = bracket_
-                    (liftIO $ do
-                        setConsoleOutputCP expected)
-                    (liftIO $ setConsoleOutputCP origCPO)
+                | setOutput =
+                    bracket_
+                        (liftIO $ do setConsoleOutputCP expected)
+                        (liftIO $ setConsoleOutputCP origCPO)
                 | otherwise = id
-
         case (setInput, setOutput) of
             (False, False) -> return ()
             (True, True)   -> warn ""
             (True, False)  -> warn " input"
             (False, True)  -> warn " output"
-
         fixInput $ fixOutput inner
     expected = 65001 -- UTF-8
-    warn typ = logInfo $ T.concat
-        [ "Setting"
-        , typ
-        , " codepage to UTF-8 (65001) to ensure correct output from GHC"
-        ]
+    warn typ =
+        logInfo $
+        T.concat
+            [ "Setting"
+            , typ
+            , " codepage to UTF-8 (65001) to ensure correct output from GHC"
+            ]
 #else
 fixCodePage = id
 #endif
-
 -- | Query information about the build and print the result to stdout in YAML format.
-queryBuildInfo :: HasEnvConfig env
-               => [Text] -- ^ selectors
-               -> RIO env ()
+queryBuildInfo ::
+       HasEnvConfig env
+    => [Text] -- ^ selectors
+    -> RIO env ()
 queryBuildInfo selectors0 =
-        rawBuildInfo
-    >>= select id selectors0
-    >>= liftIO . TIO.putStrLn . decodeUtf8 . Yaml.encode
+    rawBuildInfo >>= select id selectors0 >>=
+    liftIO . TIO.putStrLn . decodeUtf8 . Yaml.encode
   where
     select _ [] value = return value
     select front (sel:sels) value =
@@ -387,22 +413,18 @@ queryBuildInfo selectors0 =
                     _ -> err "Encountered array and needed numeric selector"
             _ -> err $ "Cannot apply selector to " ++ show value
       where
-        cont = select (front . (sel:)) sels
+        cont = select (front . (sel :)) sels
         err msg = throwString $ msg ++ ": " ++ show (front [sel])
 
 -- | Get the raw build information object
 rawBuildInfo :: HasEnvConfig env => RIO env Value
 rawBuildInfo = do
     (locals, _sourceMap) <- loadSourceMap NeedTargets defaultBuildOptsCLI
-    return $ object
-        [ "locals" .= Object (HM.fromList $ map localToPair locals)
-        ]
+    return $ object ["locals" .= Object (HM.fromList $ map localToPair locals)]
   where
-    localToPair lp =
-        (T.pack $ packageNameString $ packageName p, value)
+    localToPair lp = (T.pack $ packageNameString $ packageName p, value)
       where
         p = lpPackage lp
-        value = object
-            [ "version" .= packageVersion p
-            , "path" .= toFilePath (lpDir lp)
-            ]
+        value =
+            object
+                ["version" .= packageVersion p, "path" .= toFilePath (lpDir lp)]
