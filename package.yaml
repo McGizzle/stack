@@ -34,16 +34,6 @@ ghc-options:
 - -fwarn-incomplete-uni-patterns
 - -fwarn-incomplete-record-updates
 dependencies:
-- network-info
-- network
-- distributed-process
-- distributed-process-simplelocalnet
-- pipes
-- pipes-safe
-- dirstream
-- system-fileio
-- system-filepath
-#
 - Cabal
 - aeson
 - annotated-wl-pprint
@@ -287,7 +277,7 @@ executables:
     main: Main.hs
     source-dirs: src/Distributed
     dependencies:
-            #    - stack
+    - distributed
   stack:
     main: Main.hs
     source-dirs: src/main
@@ -312,30 +302,41 @@ executables:
     - condition: flag(supported-build)
       cpp-options: -DSUPPORTED_BUILD
 tests:
-  stack-test:
-    main: Test.hs
-    source-dirs: src/test
+  spec:
+    main: Spec.hs
+    source-dirs: src/Distributed/test
     ghc-options:
     - -threaded
     dependencies:
-    - QuickCheck
     - hspec
-    - stack
-    - smallcheck
-  stack-integration-test:
-    main: IntegrationSpec.hs
-    source-dirs:
-    - test/integration
-    - test/integration/lib
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - hspec
-    when:
-    - condition: ! '!(flag(integration-tests))'
-      buildable: false
+    - async
+    - distributed-process
+    - distributed-process-simplelocalnet
+    - distributed
+      #  stack-test:
+      #main: Test.hs
+      # source-dirs: src/test
+      #ghc-options:
+      #- -threaded
+      #dependencies:
+      #- QuickCheck
+      #- hspec
+      #- stack
+      #- smallcheck
+      #stack-integration-test:
+      #main: IntegrationSpec.hs
+      #source-dirs:
+      #- test/integration
+      #- test/integration/lib
+      #ghc-options:
+      #- -threaded
+      #- -rtsopts
+      #- -with-rtsopts=-N
+      #dependencies:
+      #- hspec
+      #when:
+      #- condition: ! '!(flag(integration-tests))'
+      #buildable: false
 flags:
   static:
     description: Pass -static/-pthread to ghc when linking the stack binary.

@@ -13,16 +13,23 @@ import           Prelude                                            hiding
                                                                      log)
 
 import           Control.Distributed.Process                        hiding
-                                                                     (bracket)
+                                                                     (bracket,
+                                                                     newChan)
 import           Control.Distributed.Process.Backend.SimpleLocalnet
 import qualified Control.Distributed.Process.Node                   as PN
+
+import           Control.Concurrent                                 (threadDelay)
+import           Control.Concurrent.Async                           (async)
+import           Control.Concurrent.Chan                            (Chan,
+                                                                     newChan,
+                                                                     readChan,
+                                                                     writeChan)
 
 import           Data.ByteString                                    (ByteString)
 import           Data.DirStream
 import           Data.List                                          (delete,
                                                                      find,
-                                                                     intersect,
-                                                                     take)
+                                                                     intersect)
 import           Data.Maybe                                         (catMaybes)
 import           Data.Text                                          (Text)
 
@@ -36,12 +43,6 @@ import           System.Console.ANSI
 import           System.Directory
 import           System.Environment                                 (getArgs)
 import           System.FilePath                                    (takeExtension)
-import           System.IO                                          (hFlush,
-                                                                     hPutStr,
-                                                                     hPutStrLn,
-                                                                     stderr,
-                                                                     stdin,
-                                                                     stdout)
 
 import           Pipes
 import qualified Pipes.Prelude                                      as P
@@ -52,20 +53,15 @@ import           Distribution.Package
 import           Distribution.PackageDescription
 import           Distribution.PackageDescription.Parse
 
+-- LOGGING ==============================================================
 log :: MonadIO m => String -> m ()
-log = liftIO . putStrLn
-
-logProgress :: MonadIO m => String -> m ()
-logProgress msg =
+log msg =
     liftIO $ do
-        setCursorColumn 0
-        clearLine
         setSGR [SetColor Foreground Vivid Black]
-        putStr "-------> File Received: "
-        setSGR [SetColor Foreground Vivid White]
-        putStr msg
+        putStrLn msg
         setSGR [Reset]
 
+----------------------------------------------------------------------
 main :: IO ()
 main = do
     getArgs >>= \case
@@ -81,6 +77,7 @@ main = do
             PN.runProcess node joinNetwork
         _ -> putStrLn "Bar args, Maysh."
 
+-- DISTRIBUTED NODES ============================================================
 runBuild :: Backend -> Process ()
 runBuild backend = do
     me <- getSelfPid
@@ -96,10 +93,30 @@ runBuild backend = do
     log $ "Node: " ++ show bestPid ++ " Is the best match."
     mapM_ (flip send False) rest
     send bestPid True
-    log "About to receive files..."
+    log "Working..."
     receiveF
+    log "Transmission complete. All files received. Ready to build."
     mapM_ (flip send ()) pids
 
+joinNetwork :: Process ()
+joinNetwork = do
+    me <- getSelfPid
+    register "nodeS" me
+    loop me
+  where
+    loop me = do
+        to <- expect
+        deps <- liftIO parseC
+        send to (deps, me)
+        (go :: Bool) <- expect
+        if go
+            then do
+                log
+                    "Received request to transmit files... Beginning transmission"
+                pipeFiles (send to) *> send to ()
+            else loop me
+
+-- HELPER FUNCTION ==================================================================
 findPids :: Backend -> Process [ProcessId]
 findPids backend = do
     loop
@@ -118,23 +135,8 @@ findPids backend = do
             then loop
             else pure pids
 
-joinNetwork :: Process ()
-joinNetwork = do
-    me <- getSelfPid
-    register "nodeS" me
-    loop me
-  where
-    loop me = do
-        to <- expect
-        deps <- liftIO parseC
-        send to (deps, me)
-        (go :: Bool) <- expect
-        if go
-            then do
-                log "Received request to transmit files... About to begin send"
-                pipeFiles (send to) *> send to ()
-            else loop me
-
+--------------------------------------------------------------------------------------
+-- RECEIVE FILES ====================================================================
 type FileInfo = (Text, ByteString)
 
 receiveF :: Process ()
@@ -142,17 +144,17 @@ receiveF = receiveWait [match work, match $ \() -> pure ()]
   where
     work :: FileInfo -> Process ()
     work f = do
-        liftIO $ saveFile f
+        _ <- liftIO $ async $ saveFile f
         receiveF
 
 saveFile :: FileInfo -> IO ()
 saveFile (path, file) = do
-    logProgress . show . filename $ path'
     createTree $ directory path'
     Filesystem.writeFile path' file
   where
     path' = decode path
 
+-- SEND FILES ======================================================================
 pipeFiles :: (MonadMask m, MonadIO m) => (FileInfo -> m ()) -> m ()
 pipeFiles func = do
     runSafeT $
@@ -166,23 +168,29 @@ pipeFiles func = do
 packageFile :: FilePath -> IO FileInfo
 packageFile file = liftA2 (,) (pure $ encode file) (Filesystem.readFile file)
 
+--------------------------------------------------------------------------------------
+-- FIND BEST MATCH ==================================================================
 type ProcessDeps = ([PackageName], ProcessId)
 
 getBestPid :: [ProcessDeps] -> [PackageName] -> ProcessDeps -> ProcessId
 getBestPid [] _ best = snd best
 getBestPid (x:xs) myDeps best
-    | length (fst x `intersect` myDeps) > (length $ fst best) =
+    | length (fst x `intersect` myDeps) > length (fst best) =
         getBestPid xs myDeps x
     | otherwise = getBestPid xs myDeps best
 
+-- PARSE CABAL =======================================================================
 parseC :: IO [PackageName]
 parseC = do
-    Just cbl <-
+    mcbl <-
         find (\x -> takeExtension x == ".cabal") <$> getDirectoryContents "."
-    parsed <- parsePackageDescription <$> Prelude.readFile cbl
-    case parsed of
-        ParseFailed _ -> pure []
-        ParseOk _ d   -> pure $ (\(Dependency x _) -> x) <$> extractDeps d
+    case mcbl of
+        Nothing -> pure []
+        Just cbl -> do
+            parsed <- parseGenericPackageDescription <$> Prelude.readFile cbl
+            case parsed of
+                ParseFailed _ -> pure []
+                ParseOk _ d -> pure $ (\(Dependency x _) -> x) <$> extractDeps d
 
 extractDeps :: GenericPackageDescription -> [Dependency]
 extractDeps d = ldeps ++ edeps
