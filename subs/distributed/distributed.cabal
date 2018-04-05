@@ -2,11 +2,10 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a2cbd8facd1c68c157ec161151ed42a9035207de60c82271b995581e66d09caf
+-- hash: ee943b9363cc78676ef2d6b72139fdc68c4402089b5ce460d23fdbcc504b5a33
 
 name:           distributed
 version:        0.1.0.0
-description:    Please see the README on Github at <https://github.com/McGizzle/simple#readme>
 author:         Sean McGroarty
 maintainer:     mcgroas@tcd.ie
 copyright:      2018 Sean McGroarty
@@ -17,11 +16,13 @@ cabal-version:  >= 1.10
 library
   hs-source-dirs:
       src
+  ghc-options: -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates
   build-depends:
       Cabal
     , ansi-terminal
     , async
     , base >=4.7 && <5
+    , binary
     , bytestring
     , directory
     , dirstream
@@ -31,26 +32,29 @@ library
     , filepath
     , pipes
     , pipes-safe
+    , process
     , system-fileio
     , system-filepath
+    , temporary
     , text
   exposed-modules:
-      Main
+      Distributed
   other-modules:
+      Main
       Paths_distributed
   default-language: Haskell2010
 
-test-suite simple-test
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
+executable FTN
+  main-is: Main.hs
   hs-source-dirs:
-      test
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+      src
+  ghc-options: -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Cabal
     , ansi-terminal
     , async
     , base >=4.7 && <5
+    , binary
     , bytestring
     , directory
     , dirstream
@@ -61,8 +65,43 @@ test-suite simple-test
     , filepath
     , pipes
     , pipes-safe
+    , process
     , system-fileio
     , system-filepath
+    , temporary
+    , text
+  other-modules:
+      Distributed
+      Paths_distributed
+  default-language: Haskell2010
+
+test-suite distributed-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Cabal
+    , ansi-terminal
+    , async
+    , base >=4.7 && <5
+    , binary
+    , bytestring
+    , directory
+    , dirstream
+    , distributed
+    , distributed-process
+    , distributed-process-simplelocalnet
+    , exceptions
+    , filepath
+    , hspec
+    , pipes
+    , pipes-safe
+    , process
+    , system-fileio
+    , system-filepath
+    , temporary
     , text
   other-modules:
       DistributedSpec
