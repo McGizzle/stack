@@ -2,9 +2,9 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ee943b9363cc78676ef2d6b72139fdc68c4402089b5ce460d23fdbcc504b5a33
+-- hash: cd567648fed9ff7ba67c587fd78dd76154f81ab0fbd334ee17ecb1ca8799a237
 
-name:           distributed
+name:           stack-network
 version:        0.1.0.0
 author:         Sean McGroarty
 maintainer:     mcgroas@tcd.ie
@@ -24,6 +24,7 @@ library
     , base >=4.7 && <5
     , binary
     , bytestring
+    , configurator
     , directory
     , dirstream
     , distributed-process
@@ -38,17 +39,20 @@ library
     , temporary
     , text
   exposed-modules:
-      Distributed
+      Network.Distributed
+      Network.Distributed.Types
+      Network.Distributed.Utils
+      Network.Distributed.Internal
   other-modules:
       Main
-      Paths_distributed
+      Paths_stack_network
   default-language: Haskell2010
 
-executable FTN
+executable stack-network
   main-is: Main.hs
   hs-source-dirs:
       src
-  ghc-options: -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -fwarn-tabs -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates
   build-depends:
       Cabal
     , ansi-terminal
@@ -56,9 +60,9 @@ executable FTN
     , base >=4.7 && <5
     , binary
     , bytestring
+    , configurator
     , directory
     , dirstream
-    , distributed
     , distributed-process
     , distributed-process-simplelocalnet
     , exceptions
@@ -66,13 +70,17 @@ executable FTN
     , pipes
     , pipes-safe
     , process
+    , stack-network
     , system-fileio
     , system-filepath
     , temporary
     , text
   other-modules:
-      Distributed
-      Paths_distributed
+      Network.Distributed
+      Network.Distributed.Internal
+      Network.Distributed.Types
+      Network.Distributed.Utils
+      Paths_stack_network
   default-language: Haskell2010
 
 test-suite distributed-test
@@ -88,6 +96,7 @@ test-suite distributed-test
     , base >=4.7 && <5
     , binary
     , bytestring
+    , configurator
     , directory
     , dirstream
     , distributed
@@ -105,5 +114,5 @@ test-suite distributed-test
     , text
   other-modules:
       DistributedSpec
-      Paths_distributed
+      Paths_stack_network
   default-language: Haskell2010

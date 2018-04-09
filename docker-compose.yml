@@ -1,6 +1,6 @@
 stack-sit:
   image: mystack:latest
-  command: bash -c "cd testbuild && stack build --allow-different-user --stack-root /testbuild/root && distributed sit 127.0.0.1 5000"
+  command: bash -c "cd testbuild1 && time stack build --allow-different-user --stack-root $PWD/root && distributed sit 127.0.0.1 5000"
   tty: true
   stdin_open: true
   net: "host"
@@ -8,7 +8,7 @@ stack-sit:
     - "5000:5000"
 stack-build:
   image: mystack:latest
-  command: bash -c "cd testbuild && distributed build 127.0.0.1 5001" 
+  command: bash -c "cd testbuild1 && rm -rf .stack-work && distributed build 127.0.0.1 5001 && time stack build --allow-different-user --stack-root $PWD/root" 
   tty: true
   stdin_open: true
   net: "host"

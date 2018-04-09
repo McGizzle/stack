@@ -107,6 +107,7 @@ import           System.Exit
 import           System.FilePath (isValid, pathSeparator)
 import           System.IO (stderr, stdin, stdout, BufferMode(..), hPutStrLn, hGetEncoding, hSetEncoding)
 
+import Network.Distributed
 -- | Change the character encoding of the given Handle to transliterate
 -- on unsupported characters instead of throwing an exception
 hSetTranslit :: Handle -> IO ()
@@ -266,6 +267,11 @@ commandLineHandler currentDir progName isInterpreter = complicatedOptions
                          "Shortcut for 'build --haddock'"
                          buildCmd
                          (buildOptsParser Haddock)
+-- Added command
+        addCommand' "join-network"
+                    "Join the network"
+                    joinNetCmd
+                    (pure ())
         addCommand' "new"
          (unwords [ "Create a new project from a template."
                   , "Run `stack templates' to see available templates."
@@ -491,6 +497,10 @@ commandLineHandler currentDir progName isInterpreter = complicatedOptions
 
 type AddCommand =
     ExceptT (GlobalOpts -> IO ()) (Writer (Mod CommandFields (GlobalOpts -> IO (), GlobalOptsMonoid))) ()
+
+-- | Join the Network
+joinNetCmd :: () -> GlobalOpts -> IO ()
+joinNetCmd _ _ = joinNetwork =<< parseNetConfig
 
 -- | fall-through to external executables in `git` style if they exist
 -- (i.e. `stack something` looks for `stack-something` before
@@ -936,6 +946,7 @@ newCmd (newOpts,initOpts) go@GlobalOpts{..} =
     withMiniConfigAndLock go $ do
         dir <- new newOpts (forceOverwrite initOpts)
         initProject IsNewCmd dir initOpts globalResolver
+
 
 -- | List the available templates.
 templatesCmd :: () -> GlobalOpts -> IO ()

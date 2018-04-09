@@ -2,14 +2,14 @@ resolver: lts-9.14
 packages:
 - .
 - subs/rio
-- subs/distributed
+- subs/stack-network
 
 docker:
   enable: false
 image:
   container:
     name: "mystack"
-    base: "mystack-base"
+    base: "mystack-base:latest"
 nix:
   # --nix on the command-line to enable.
   enable: false
@@ -34,7 +34,12 @@ extra-deps:
 - smallcheck-1.1.3
 - conduit-extra-1.2.3.1
 - typed-process-0.2.1.0
-
+#
+- dirstream-1.0.3
+- distributed-process-0.7.3
+- distributed-process-simplelocalnet-0.2.4
+- network-transport-0.5.2
+- network-transport-tcp-0.6.0
 # https://github.com/commercialhaskell/stack/issues/3785
 - ansi-terminal-0.8
 - ansi-wl-pprint-0.6.8.2

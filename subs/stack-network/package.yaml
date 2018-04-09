@@ -1,4 +1,4 @@
-name:                distributed
+name:                stack-network
 version:             0.1.0.0
 license:             BSD3
 author:              "Sean McGroarty"
@@ -31,22 +31,22 @@ dependencies:
 - text
 - process
 - binary
+- configurator
 
 library:
   source-dirs: src
-  exposed-modules: Distributed
+  exposed-modules: 
+  - Network.Distributed
+  - Network.Distributed.Types
+  - Network.Distributed.Utils
+  - Network.Distributed.Internal
 
 executables:
-  FTN:
+  stack-network:
     source-dirs: src
     main: Main.hs
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
     dependencies: 
-    - distributed
-
+    - stack-network
 tests:
   distributed-test:
     main:                Spec.hs

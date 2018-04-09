@@ -3,12 +3,12 @@
 
 module Stack.Options.BuildParser where
 
-import qualified Data.Map as Map
+import qualified Data.Map                          as Map
 import           Options.Applicative
 import           Options.Applicative.Args
 import           Options.Applicative.Builder.Extra
 import           Stack.Options.Completion
-import           Stack.Options.PackageParser (readFlag)
+import           Stack.Options.PackageParser       (readFlag)
 import           Stack.Prelude
 import           Stack.Types.Config
 import           Stack.Types.FlagName
@@ -16,37 +16,25 @@ import           Stack.Types.PackageName
 import           Stack.Types.Version
 
 -- | Parser for CLI-only build arguments
-buildOptsParser :: BuildCommand
-                -> Parser BuildOptsCLI
+buildOptsParser :: BuildCommand -> Parser BuildOptsCLI
 buildOptsParser cmd =
-    BuildOptsCLI <$>
-    targetsParser <*>
-    switch
-        (long "dry-run" <>
-         help "Don't build anything, just prepare to") <*>
-    ((\x y z ->
-           concat [x, y, z]) <$>
+    BuildOptsCLI <$> targetsParser <*>
+    switch (long "dry-run" <> help "Don't build anything, just prepare to") <*>
+    ((\x y z -> concat [x, y, z]) <$>
      flag
          []
          ["-Wall", "-Werror"]
-         (long "pedantic" <>
-          help "Turn on -Wall and -Werror") <*>
-     flag
-         []
-         ["-O0"]
-         (long "fast" <>
-          help "Turn off optimizations (-O0)") <*>
+         (long "pedantic" <> help "Turn on -Wall and -Werror") <*>
+     flag [] ["-O0"] (long "fast" <> help "Turn off optimizations (-O0)") <*>
      many
          (textOption
-              (long "ghc-options" <>
-               metavar "OPTIONS" <>
+              (long "ghc-options" <> metavar "OPTIONS" <>
                completer ghcOptsCompleter <>
                help "Additional options passed to GHC"))) <*>
     flagsParser <*>
     (flag'
          BSOnlyDependencies
-         (long "dependencies-only" <>
-          help "A synonym for --only-dependencies") <|>
+         (long "dependencies-only" <> help "A synonym for --only-dependencies") <|>
      flag'
          BSOnlySnapshot
          (long "only-snapshot" <>
@@ -69,9 +57,9 @@ buildOptsParser cmd =
           help
               "Like --file-watch, but polling the filesystem instead of using events") <|>
      pure NoFileWatch) <*>
-    many (cmdOption
-             (long "exec" <>
-              metavar "CMD [ARGS]" <>
+    many
+        (cmdOption
+             (long "exec" <> metavar "CMD [ARGS]" <>
               help "Command and arguments to run after a successful build")) <*>
     switch
         (long "only-configure" <>
@@ -80,29 +68,30 @@ buildOptsParser cmd =
     pure cmd <*>
     switch
         (long "initial-build-steps" <>
-         help "For target packages, only run initial build steps needed for GHCi" <>
-         internal)
+         help
+             "For target packages, only run initial build steps needed for GHCi" <>
+         internal) <*>
+    switch (short 'n' <> long "network" <> help "Run Stack in Network mode")
 
 targetsParser :: Parser [Text]
 targetsParser =
     many
         (textArgument
-             (metavar "TARGET" <>
-              completer targetCompleter <>
-              help ("If none specified, use all local packages. " <>
-                    "See https://docs.haskellstack.org/en/v" <>
-                    versionString stackMinorVersion <>
-                    "/build_command/#target-syntax for details.")))
+             (metavar "TARGET" <> completer targetCompleter <>
+              help
+                  ("If none specified, use all local packages. " <>
+                   "See https://docs.haskellstack.org/en/v" <>
+                   versionString stackMinorVersion <>
+                   "/build_command/#target-syntax for details.")))
 
 flagsParser :: Parser (Map.Map (Maybe PackageName) (Map.Map FlagName Bool))
 flagsParser =
-     Map.unionsWith Map.union <$>
-     many
-         (option
-              readFlag
-              (long "flag" <>
-               completer flagCompleter <>
-               metavar "PACKAGE:[-]FLAG" <>
-               help
-                   ("Override flags set in stack.yaml " <>
-                    "(applies to local packages and extra-deps)")))
+    Map.unionsWith Map.union <$>
+    many
+        (option
+             readFlag
+             (long "flag" <> completer flagCompleter <>
+              metavar "PACKAGE:[-]FLAG" <>
+              help
+                  ("Override flags set in stack.yaml " <>
+                   "(applies to local packages and extra-deps)")))

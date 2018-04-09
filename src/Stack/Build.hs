@@ -20,6 +20,7 @@ module Stack.Build
     , CabalVersionException(..)
     ) where
 
+import           Control.Monad                 (when)
 import           Data.Aeson                    (Value (Array, Object), object,
                                                 (.=))
 import qualified Data.HashMap.Strict           as HM
@@ -63,6 +64,8 @@ import           System.Win32.Console          (getConsoleCP,
                                                 setConsoleCP,
                                                 setConsoleOutputCP)
 #endif
+import           Network.Distributed           (parseNetConfig, runRequestNode)
+
 -- | Build.
 --
 --   If a buildLock is passed there is an important contract here.  That lock must
@@ -76,6 +79,8 @@ build ::
     -> RIO env ()
 build setLocalFiles mbuildLk boptsCli =
     fixCodePage $ do
+        when (boptsCLINetwork boptsCli) $
+            liftIO $ do runRequestNode =<< parseNetConfig
         bopts <- view buildOptsL
         let profiling = boptsLibProfile bopts || boptsExeProfile bopts
         let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)
@@ -113,22 +118,6 @@ build setLocalFiles mbuildLk boptsCli =
                 , getInstalledSymbols = symbols
                 }
                 sourceMap
-        logInfo $
-            T.pack $
-            "\n\nBuild -> build -> installedMap: " ++
-            show installedMap ++ "\n\n"
-        logInfo $
-            T.pack $
-            "\n\nBuild -> build -> globalDumpPkgs: " ++
-            show globalDumpPkgs ++ "\n\n"
-        logInfo $
-            T.pack $
-            "\n\nBuild -> build -> snapshotDumpPkgs: " ++
-            show snapshotDumpPkgs ++ "\n\n"
-        logInfo $
-            T.pack $
-            "\n\nBuild -> build -> localDumpPkgs: " ++
-            show localDumpPkgs ++ "\n\n"
         baseConfigOpts <- mkBaseConfigOpts boptsCli
         plan <-
             constructPlan

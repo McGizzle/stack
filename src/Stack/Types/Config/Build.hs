@@ -1,14 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 -- | Configuration options for building.
-
 module Stack.Types.Config.Build
-    (
-      BuildOpts(..)
+    ( BuildOpts(..)
     , BuildCommand(..)
     , defaultBuildOpts
     , defaultBuildOptsCLI
@@ -25,72 +23,69 @@ module Stack.Types.Config.Build
     , BenchmarkOptsMonoid(..)
     , FileWatchOpts(..)
     , BuildSubset(..)
-    )
-    where
+    ) where
 
 import           Data.Aeson.Extended
-import qualified Data.Map.Strict as Map
-import           Generics.Deriving.Monoid (memptydefault, mappenddefault)
+import qualified Data.Map.Strict          as Map
+import           Generics.Deriving.Monoid (mappenddefault, memptydefault)
 import           Stack.Prelude
 import           Stack.Types.FlagName
 import           Stack.Types.PackageName
 
 -- | Build options that is interpreted by the build command.
 --   This is built up from BuildOptsCLI and BuildOptsMonoid
-data BuildOpts =
-  BuildOpts {boptsLibProfile :: !Bool
-            ,boptsExeProfile :: !Bool
-            ,boptsLibStrip :: !Bool
-            ,boptsExeStrip :: !Bool
-            ,boptsHaddock :: !Bool
+data BuildOpts = BuildOpts
+    { boptsLibProfile             :: !Bool
+    , boptsExeProfile             :: !Bool
+    , boptsLibStrip               :: !Bool
+    , boptsExeStrip               :: !Bool
+    , boptsHaddock                :: !Bool
             -- ^ Build haddocks?
-            ,boptsHaddockOpts :: !HaddockOpts
+    , boptsHaddockOpts            :: !HaddockOpts
             -- ^ Options to pass to haddock
-            ,boptsOpenHaddocks :: !Bool
+    , boptsOpenHaddocks           :: !Bool
             -- ^ Open haddocks in the browser?
-            ,boptsHaddockDeps :: !(Maybe Bool)
+    , boptsHaddockDeps            :: !(Maybe Bool)
             -- ^ Build haddocks for dependencies?
-            ,boptsHaddockInternal :: !Bool
+    , boptsHaddockInternal        :: !Bool
             -- ^ Build haddocks for all symbols and packages, like @cabal haddock --internal@
-            ,boptsHaddockHyperlinkSource  :: !Bool
+    , boptsHaddockHyperlinkSource :: !Bool
             -- ^ Build hyperlinked source if possible. Fallback to
             -- @hscolour@. Disable for no sources.
-            ,boptsInstallExes :: !Bool
+    , boptsInstallExes            :: !Bool
             -- ^ Install executables to user path after building?
-            ,boptsInstallCompilerTool :: !Bool
+    , boptsInstallCompilerTool    :: !Bool
             -- ^ Install executables to compiler tools path after building?
-            ,boptsPreFetch :: !Bool
+    , boptsPreFetch               :: !Bool
             -- ^ Fetch all packages immediately
             -- ^ Watch files for changes and automatically rebuild
-            ,boptsKeepGoing :: !(Maybe Bool)
+    , boptsKeepGoing              :: !(Maybe Bool)
             -- ^ Keep building/running after failure
-            ,boptsForceDirty :: !Bool
+    , boptsForceDirty             :: !Bool
             -- ^ Force treating all local packages as having dirty files
-
-            ,boptsTests :: !Bool
+    , boptsTests                  :: !Bool
             -- ^ Turn on tests for local targets
-            ,boptsTestOpts :: !TestOpts
+    , boptsTestOpts               :: !TestOpts
             -- ^ Additional test arguments
-
-            ,boptsBenchmarks :: !Bool
+    , boptsBenchmarks             :: !Bool
             -- ^ Turn on benchmarks for local targets
-            ,boptsBenchmarkOpts :: !BenchmarkOpts
+    , boptsBenchmarkOpts          :: !BenchmarkOpts
             -- ^ Additional test arguments
             -- ^ Commands (with arguments) to run after a successful build
             -- ^ Only perform the configure step when building
-            ,boptsReconfigure :: !Bool
+    , boptsReconfigure            :: !Bool
             -- ^ Perform the configure step even if already configured
-            ,boptsCabalVerbose :: !Bool
+    , boptsCabalVerbose           :: !Bool
             -- ^ Ask Cabal to be verbose in its builds
-            ,boptsSplitObjs :: !Bool
+    , boptsSplitObjs              :: !Bool
             -- ^ Whether to enable split-objs.
-            ,boptsSkipComponents :: ![Text]
+    , boptsSkipComponents         :: ![Text]
             -- ^ Which components to skip when building
-            }
-  deriving (Show)
+    } deriving (Show)
 
 defaultBuildOpts :: BuildOpts
-defaultBuildOpts = BuildOpts
+defaultBuildOpts =
+    BuildOpts
     { boptsLibProfile = False
     , boptsExeProfile = False
     , boptsLibStrip = True
@@ -116,8 +111,9 @@ defaultBuildOpts = BuildOpts
     , boptsSkipComponents = []
     }
 
-defaultBuildOptsCLI ::BuildOptsCLI
-defaultBuildOptsCLI = BuildOptsCLI
+defaultBuildOptsCLI :: BuildOptsCLI
+defaultBuildOptsCLI =
+    BuildOptsCLI
     { boptsCLITargets = []
     , boptsCLIDryrun = False
     , boptsCLIFlags = Map.empty
@@ -128,6 +124,7 @@ defaultBuildOptsCLI = BuildOptsCLI
     , boptsCLIOnlyConfigure = False
     , boptsCLICommand = Build
     , boptsCLIInitialBuildSteps = False
+    , boptsCLINetwork = False
     }
 
 -- | Build options that may only be specified from the CLI
@@ -142,7 +139,8 @@ data BuildOptsCLI = BuildOptsCLI
     , boptsCLIOnlyConfigure :: !Bool
     , boptsCLICommand :: !BuildCommand
     , boptsCLIInitialBuildSteps :: !Bool
-    } deriving Show
+    , boptsCLINetwork :: !Bool
+    } deriving (Show)
 
 -- | Command sum type for conditional arguments.
 data BuildCommand
@@ -155,63 +153,91 @@ data BuildCommand
 
 -- | Build options that may be specified in the stack.yaml or from the CLI
 data BuildOptsMonoid = BuildOptsMonoid
-    { buildMonoidTrace :: !Any
-    , buildMonoidProfile :: !Any
-    , buildMonoidNoStrip :: !Any
-    , buildMonoidLibProfile :: !(First Bool)
-    , buildMonoidExeProfile :: !(First Bool)
-    , buildMonoidLibStrip :: !(First Bool)
-    , buildMonoidExeStrip :: !(First Bool)
-    , buildMonoidHaddock :: !(First Bool)
-    , buildMonoidHaddockOpts :: !HaddockOptsMonoid
-    , buildMonoidOpenHaddocks :: !(First Bool)
-    , buildMonoidHaddockDeps :: !(First Bool)
-    , buildMonoidHaddockInternal :: !(First Bool)
+    { buildMonoidTrace                  :: !Any
+    , buildMonoidProfile                :: !Any
+    , buildMonoidNoStrip                :: !Any
+    , buildMonoidLibProfile             :: !(First Bool)
+    , buildMonoidExeProfile             :: !(First Bool)
+    , buildMonoidLibStrip               :: !(First Bool)
+    , buildMonoidExeStrip               :: !(First Bool)
+    , buildMonoidHaddock                :: !(First Bool)
+    , buildMonoidHaddockOpts            :: !HaddockOptsMonoid
+    , buildMonoidOpenHaddocks           :: !(First Bool)
+    , buildMonoidHaddockDeps            :: !(First Bool)
+    , buildMonoidHaddockInternal        :: !(First Bool)
     , buildMonoidHaddockHyperlinkSource :: !(First Bool)
-    , buildMonoidInstallExes :: !(First Bool)
-    , buildMonoidInstallCompilerTool :: !(First Bool)
-    , buildMonoidPreFetch :: !(First Bool)
-    , buildMonoidKeepGoing :: !(First Bool)
-    , buildMonoidForceDirty :: !(First Bool)
-    , buildMonoidTests :: !(First Bool)
-    , buildMonoidTestOpts :: !TestOptsMonoid
-    , buildMonoidBenchmarks :: !(First Bool)
-    , buildMonoidBenchmarkOpts :: !BenchmarkOptsMonoid
-    , buildMonoidReconfigure :: !(First Bool)
-    , buildMonoidCabalVerbose :: !(First Bool)
-    , buildMonoidSplitObjs :: !(First Bool)
-    , buildMonoidSkipComponents :: ![Text]
+    , buildMonoidInstallExes            :: !(First Bool)
+    , buildMonoidInstallCompilerTool    :: !(First Bool)
+    , buildMonoidPreFetch               :: !(First Bool)
+    , buildMonoidKeepGoing              :: !(First Bool)
+    , buildMonoidForceDirty             :: !(First Bool)
+    , buildMonoidTests                  :: !(First Bool)
+    , buildMonoidTestOpts               :: !TestOptsMonoid
+    , buildMonoidBenchmarks             :: !(First Bool)
+    , buildMonoidBenchmarkOpts          :: !BenchmarkOptsMonoid
+    , buildMonoidReconfigure            :: !(First Bool)
+    , buildMonoidCabalVerbose           :: !(First Bool)
+    , buildMonoidSplitObjs              :: !(First Bool)
+    , buildMonoidSkipComponents         :: ![Text]
     } deriving (Show, Generic)
 
 instance FromJSON (WithJSONWarnings BuildOptsMonoid) where
-  parseJSON = withObjectWarnings "BuildOptsMonoid"
-    (\o -> do let buildMonoidTrace = Any False
-                  buildMonoidProfile = Any False
-                  buildMonoidNoStrip = Any False
-              buildMonoidLibProfile <- First <$> o ..:? buildMonoidLibProfileArgName
-              buildMonoidExeProfile <-First <$>  o ..:? buildMonoidExeProfileArgName
-              buildMonoidLibStrip <- First <$> o ..:? buildMonoidLibStripArgName
-              buildMonoidExeStrip <-First <$>  o ..:? buildMonoidExeStripArgName
-              buildMonoidHaddock <- First <$> o ..:? buildMonoidHaddockArgName
-              buildMonoidHaddockOpts <- jsonSubWarnings (o ..:? buildMonoidHaddockOptsArgName ..!= mempty)
-              buildMonoidOpenHaddocks <- First <$> o ..:? buildMonoidOpenHaddocksArgName
-              buildMonoidHaddockDeps <- First <$> o ..:? buildMonoidHaddockDepsArgName
-              buildMonoidHaddockInternal <- First <$> o ..:? buildMonoidHaddockInternalArgName
-              buildMonoidHaddockHyperlinkSource <- First <$> o ..:? buildMonoidHaddockHyperlinkSourceArgName
-              buildMonoidInstallExes <- First <$> o ..:? buildMonoidInstallExesArgName
-              buildMonoidInstallCompilerTool <- First <$> o ..:? buildMonoidInstallCompilerToolArgName
-              buildMonoidPreFetch <- First <$> o ..:? buildMonoidPreFetchArgName
-              buildMonoidKeepGoing <- First <$> o ..:? buildMonoidKeepGoingArgName
-              buildMonoidForceDirty <- First <$> o ..:? buildMonoidForceDirtyArgName
-              buildMonoidTests <- First <$> o ..:? buildMonoidTestsArgName
-              buildMonoidTestOpts <- jsonSubWarnings (o ..:? buildMonoidTestOptsArgName ..!= mempty)
-              buildMonoidBenchmarks <- First <$> o ..:? buildMonoidBenchmarksArgName
-              buildMonoidBenchmarkOpts <- jsonSubWarnings (o ..:? buildMonoidBenchmarkOptsArgName ..!= mempty)
-              buildMonoidReconfigure <- First <$> o ..:? buildMonoidReconfigureArgName
-              buildMonoidCabalVerbose <- First <$> o ..:? buildMonoidCabalVerboseArgName
-              buildMonoidSplitObjs <- First <$> o ..:? buildMonoidSplitObjsName
-              buildMonoidSkipComponents <- o ..:? buildMonoidSkipComponentsName ..!= mempty
-              return BuildOptsMonoid{..})
+    parseJSON =
+        withObjectWarnings
+            "BuildOptsMonoid"
+            (\o -> do
+                 let buildMonoidTrace = Any False
+                     buildMonoidProfile = Any False
+                     buildMonoidNoStrip = Any False
+                 buildMonoidLibProfile <-
+                     First <$> o ..:? buildMonoidLibProfileArgName
+                 buildMonoidExeProfile <-
+                     First <$> o ..:? buildMonoidExeProfileArgName
+                 buildMonoidLibStrip <-
+                     First <$> o ..:? buildMonoidLibStripArgName
+                 buildMonoidExeStrip <-
+                     First <$> o ..:? buildMonoidExeStripArgName
+                 buildMonoidHaddock <-
+                     First <$> o ..:? buildMonoidHaddockArgName
+                 buildMonoidHaddockOpts <-
+                     jsonSubWarnings
+                         (o ..:? buildMonoidHaddockOptsArgName ..!= mempty)
+                 buildMonoidOpenHaddocks <-
+                     First <$> o ..:? buildMonoidOpenHaddocksArgName
+                 buildMonoidHaddockDeps <-
+                     First <$> o ..:? buildMonoidHaddockDepsArgName
+                 buildMonoidHaddockInternal <-
+                     First <$> o ..:? buildMonoidHaddockInternalArgName
+                 buildMonoidHaddockHyperlinkSource <-
+                     First <$> o ..:? buildMonoidHaddockHyperlinkSourceArgName
+                 buildMonoidInstallExes <-
+                     First <$> o ..:? buildMonoidInstallExesArgName
+                 buildMonoidInstallCompilerTool <-
+                     First <$> o ..:? buildMonoidInstallCompilerToolArgName
+                 buildMonoidPreFetch <-
+                     First <$> o ..:? buildMonoidPreFetchArgName
+                 buildMonoidKeepGoing <-
+                     First <$> o ..:? buildMonoidKeepGoingArgName
+                 buildMonoidForceDirty <-
+                     First <$> o ..:? buildMonoidForceDirtyArgName
+                 buildMonoidTests <- First <$> o ..:? buildMonoidTestsArgName
+                 buildMonoidTestOpts <-
+                     jsonSubWarnings
+                         (o ..:? buildMonoidTestOptsArgName ..!= mempty)
+                 buildMonoidBenchmarks <-
+                     First <$> o ..:? buildMonoidBenchmarksArgName
+                 buildMonoidBenchmarkOpts <-
+                     jsonSubWarnings
+                         (o ..:? buildMonoidBenchmarkOptsArgName ..!= mempty)
+                 buildMonoidReconfigure <-
+                     First <$> o ..:? buildMonoidReconfigureArgName
+                 buildMonoidCabalVerbose <-
+                     First <$> o ..:? buildMonoidCabalVerboseArgName
+                 buildMonoidSplitObjs <-
+                     First <$> o ..:? buildMonoidSplitObjsName
+                 buildMonoidSkipComponents <-
+                     o ..:? buildMonoidSkipComponentsName ..!= mempty
+                 return BuildOptsMonoid {..})
 
 buildMonoidLibProfileArgName :: Text
 buildMonoidLibProfileArgName = "library-profiling"
@@ -296,36 +322,42 @@ data BuildSubset
     deriving (Show, Eq)
 
 -- | Options for the 'FinalAction' 'DoTests'
-data TestOpts =
-  TestOpts {toRerunTests :: !Bool -- ^ Whether successful tests will be run gain
-           ,toAdditionalArgs :: ![String] -- ^ Arguments passed to the test program
-           ,toCoverage :: !Bool -- ^ Generate a code coverage report
-           ,toDisableRun :: !Bool -- ^ Disable running of tests
-           } deriving (Eq,Show)
+data TestOpts = TestOpts
+    { toRerunTests     :: !Bool -- ^ Whether successful tests will be run gain
+    , toAdditionalArgs :: ![String] -- ^ Arguments passed to the test program
+    , toCoverage       :: !Bool -- ^ Generate a code coverage report
+    , toDisableRun     :: !Bool -- ^ Disable running of tests
+    } deriving (Eq, Show)
 
 defaultTestOpts :: TestOpts
-defaultTestOpts = TestOpts
+defaultTestOpts =
+    TestOpts
     { toRerunTests = True
     , toAdditionalArgs = []
     , toCoverage = False
     , toDisableRun = False
     }
 
-data TestOptsMonoid =
-  TestOptsMonoid
-    { toMonoidRerunTests :: !(First Bool)
+data TestOptsMonoid = TestOptsMonoid
+    { toMonoidRerunTests     :: !(First Bool)
     , toMonoidAdditionalArgs :: ![String]
-    , toMonoidCoverage :: !(First Bool)
-    , toMonoidDisableRun :: !(First Bool)
+    , toMonoidCoverage       :: !(First Bool)
+    , toMonoidDisableRun     :: !(First Bool)
     } deriving (Show, Generic)
 
 instance FromJSON (WithJSONWarnings TestOptsMonoid) where
-  parseJSON = withObjectWarnings "TestOptsMonoid"
-    (\o -> do toMonoidRerunTests <- First <$> o ..:? toMonoidRerunTestsArgName
-              toMonoidAdditionalArgs <- o ..:? toMonoidAdditionalArgsName ..!= []
-              toMonoidCoverage <- First <$> o ..:? toMonoidCoverageArgName
-              toMonoidDisableRun <- First <$> o ..:? toMonoidDisableRunArgName
-              return TestOptsMonoid{..})
+    parseJSON =
+        withObjectWarnings
+            "TestOptsMonoid"
+            (\o -> do
+                 toMonoidRerunTests <-
+                     First <$> o ..:? toMonoidRerunTestsArgName
+                 toMonoidAdditionalArgs <-
+                     o ..:? toMonoidAdditionalArgsName ..!= []
+                 toMonoidCoverage <- First <$> o ..:? toMonoidCoverageArgName
+                 toMonoidDisableRun <-
+                     First <$> o ..:? toMonoidDisableRunArgName
+                 return TestOptsMonoid {..})
 
 toMonoidRerunTestsArgName :: Text
 toMonoidRerunTestsArgName = "rerun-tests"
@@ -340,60 +372,62 @@ toMonoidDisableRunArgName :: Text
 toMonoidDisableRunArgName = "no-run-tests"
 
 instance Monoid TestOptsMonoid where
-  mempty = memptydefault
-  mappend = mappenddefault
-
-
+    mempty = memptydefault
+    mappend = mappenddefault
 
 -- | Haddock Options
-newtype HaddockOpts =
-  HaddockOpts { hoAdditionalArgs :: [String] -- ^ Arguments passed to haddock program
-              } deriving (Eq,Show)
+newtype HaddockOpts = HaddockOpts
+    { hoAdditionalArgs :: [String] -- ^ Arguments passed to haddock program
+    } deriving (Eq, Show)
 
-newtype HaddockOptsMonoid =
-  HaddockOptsMonoid {hoMonoidAdditionalArgs :: [String]
-                    } deriving (Show, Generic)
+newtype HaddockOptsMonoid = HaddockOptsMonoid
+    { hoMonoidAdditionalArgs :: [String]
+    } deriving (Show, Generic)
 
 defaultHaddockOpts :: HaddockOpts
 defaultHaddockOpts = HaddockOpts {hoAdditionalArgs = []}
 
 instance FromJSON (WithJSONWarnings HaddockOptsMonoid) where
-  parseJSON = withObjectWarnings "HaddockOptsMonoid"
-    (\o -> do hoMonoidAdditionalArgs <- o ..:? hoMonoidAdditionalArgsName ..!= []
-              return HaddockOptsMonoid{..})
+    parseJSON =
+        withObjectWarnings
+            "HaddockOptsMonoid"
+            (\o -> do
+                 hoMonoidAdditionalArgs <-
+                     o ..:? hoMonoidAdditionalArgsName ..!= []
+                 return HaddockOptsMonoid {..})
 
 instance Monoid HaddockOptsMonoid where
-  mempty = memptydefault
-  mappend = mappenddefault
+    mempty = memptydefault
+    mappend = mappenddefault
 
 hoMonoidAdditionalArgsName :: Text
 hoMonoidAdditionalArgsName = "haddock-args"
 
-
 -- | Options for the 'FinalAction' 'DoBenchmarks'
-data BenchmarkOpts =
-  BenchmarkOpts
+data BenchmarkOpts = BenchmarkOpts
     { beoAdditionalArgs :: !(Maybe String) -- ^ Arguments passed to the benchmark program
-    , beoDisableRun :: !Bool -- ^ Disable running of benchmarks
-    } deriving (Eq,Show)
+    , beoDisableRun     :: !Bool -- ^ Disable running of benchmarks
+    } deriving (Eq, Show)
 
 defaultBenchmarkOpts :: BenchmarkOpts
-defaultBenchmarkOpts = BenchmarkOpts
-    { beoAdditionalArgs = Nothing
-    , beoDisableRun = False
-    }
+defaultBenchmarkOpts =
+    BenchmarkOpts {beoAdditionalArgs = Nothing, beoDisableRun = False}
 
-data BenchmarkOptsMonoid =
-  BenchmarkOptsMonoid
-     { beoMonoidAdditionalArgs :: !(First String)
-     , beoMonoidDisableRun :: !(First Bool)
-     } deriving (Show, Generic)
+data BenchmarkOptsMonoid = BenchmarkOptsMonoid
+    { beoMonoidAdditionalArgs :: !(First String)
+    , beoMonoidDisableRun     :: !(First Bool)
+    } deriving (Show, Generic)
 
 instance FromJSON (WithJSONWarnings BenchmarkOptsMonoid) where
-  parseJSON = withObjectWarnings "BenchmarkOptsMonoid"
-    (\o -> do beoMonoidAdditionalArgs <- First <$> o ..:? beoMonoidAdditionalArgsArgName
-              beoMonoidDisableRun <- First <$> o ..:? beoMonoidDisableRunArgName
-              return BenchmarkOptsMonoid{..})
+    parseJSON =
+        withObjectWarnings
+            "BenchmarkOptsMonoid"
+            (\o -> do
+                 beoMonoidAdditionalArgs <-
+                     First <$> o ..:? beoMonoidAdditionalArgsArgName
+                 beoMonoidDisableRun <-
+                     First <$> o ..:? beoMonoidDisableRunArgName
+                 return BenchmarkOptsMonoid {..})
 
 beoMonoidAdditionalArgsArgName :: Text
 beoMonoidAdditionalArgsArgName = "benchmark-arguments"
@@ -402,11 +436,11 @@ beoMonoidDisableRunArgName :: Text
 beoMonoidDisableRunArgName = "no-run-benchmarks"
 
 instance Monoid BenchmarkOptsMonoid where
-  mempty = memptydefault
-  mappend = mappenddefault
+    mempty = memptydefault
+    mappend = mappenddefault
 
 data FileWatchOpts
-  = NoFileWatch
-  | FileWatch
-  | FileWatchPoll
-  deriving (Show,Eq)
+    = NoFileWatch
+    | FileWatch
+    | FileWatchPoll
+    deriving (Show, Eq)

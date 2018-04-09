@@ -59,7 +59,6 @@ getInstalled ::
 getInstalled opts sourceMap = do
     logDebug "Finding out which packages are already installed"
     snapDBPath <- packageDatabaseDeps
-    traceM $ "\nsnapDBPath: " ++ show snapDBPath
     localDBPath <- packageDatabaseLocal
     extraDBPaths <- packageDatabaseExtra
     mcache <-
@@ -154,7 +153,6 @@ loadDatabase opts mcache sourceMap mdb lhs0 = do
             _ -> CL.map (\dp -> dp {dpSymbols = False})
     mloc = fmap fst mdb
     sinkDP =
-        trace ("\nloadDatabase: " ++ show mloc ++ "\n") $
         conduitProfilingCache .| conduitHaddockCache .| conduitSymbolsCache .|
         CL.map (isAllowed opts mcache sourceMap mloc &&& toLoadHelper mloc) .|
         CL.consume

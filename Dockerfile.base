@@ -10,5 +10,7 @@ RUN apt-get update && apt-get install -y \
   git-all \
   curl
 
-RUN git clone https://github.com/McGizzle/testbuild 
+COPY testbuild1 /testbuild1
+COPY testbuild2 /testbuild2
+
 ENV PATH="/:${PATH}"

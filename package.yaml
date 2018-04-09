@@ -34,6 +34,8 @@ ghc-options:
 - -fwarn-incomplete-uni-patterns
 - -fwarn-incomplete-record-updates
 dependencies:
+- stack-network
+#
 - Cabal
 - aeson
 - annotated-wl-pprint
@@ -273,11 +275,6 @@ library:
     else:
       source-dirs: src/unix/
 executables:
-  distributed:
-    main: Main.hs
-    source-dirs: src/Distributed
-    dependencies:
-    - distributed
   stack:
     main: Main.hs
     source-dirs: src/main
@@ -302,41 +299,30 @@ executables:
     - condition: flag(supported-build)
       cpp-options: -DSUPPORTED_BUILD
 tests:
-  spec:
-    main: Spec.hs
-    source-dirs: src/Distributed/test
+  stack-test:
+    main: Test.hs
+    source-dirs: src/test
     ghc-options:
     - -threaded
     dependencies:
+    - QuickCheck
     - hspec
-    - async
-    - distributed-process
-    - distributed-process-simplelocalnet
-    - distributed
-      #  stack-test:
-      #main: Test.hs
-      # source-dirs: src/test
-      #ghc-options:
-      #- -threaded
-      #dependencies:
-      #- QuickCheck
-      #- hspec
-      #- stack
-      #- smallcheck
-      #stack-integration-test:
-      #main: IntegrationSpec.hs
-      #source-dirs:
-      #- test/integration
-      #- test/integration/lib
-      #ghc-options:
-      #- -threaded
-      #- -rtsopts
-      #- -with-rtsopts=-N
-      #dependencies:
-      #- hspec
-      #when:
-      #- condition: ! '!(flag(integration-tests))'
-      #buildable: false
+    - stack
+    - smallcheck
+  stack-integration-test:
+    main: IntegrationSpec.hs
+    source-dirs:
+    - test/integration
+    - test/integration/lib
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - hspec
+    when:
+    - condition: ! '!(flag(integration-tests))'
+      buildable: false
 flags:
   static:
     description: Pass -static/-pthread to ghc when linking the stack binary.
@@ -347,8 +333,7 @@ flags:
     manual: true
     default: false
   hide-dependency-versions:
-    description: Hides dependency versions from "stack --version", used only by building
-      with stack.yaml
+    description: Hides dependency versions from "stack --version", used only by building with stack.yaml
     manual: true
     default: false
   integration-tests:
