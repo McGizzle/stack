@@ -51,10 +51,10 @@ runRequestNode' backend = do
     log "Searching the Network..."
     pids <- findPids backend
     logSucc $ "Found Nodes: " ++ show pids
-    deps <- gatherDeps me pids
+    pDeps <- gatherDeps me pids
     myDeps <- listDeps
     log "Finding most compatable node..."
-    case getBestPid deps myDeps (Nothing, 0) of
+    case getBestPid pDeps myDeps (Nothing, 0) of
         Nothing -> do
             logWarn "No Nodes share dependencies, aborting."
         Just n -> do
@@ -66,7 +66,8 @@ runRequestNode' backend = do
             logSucc "Transmission complete. All files received. Ready to build."
 
 joinNetwork :: NetworkConfig -> IO ()
-joinNetwork NetworkConfig {..} = do
+joinNetwork nc@NetworkConfig {..} = do
+    log $ "Node joining network on: " ++ show nc
     node <-
         newLocalNode =<<
         initializeBackend hostNetworkConfig portNetworkConfig PN.initRemoteTable
@@ -116,10 +117,7 @@ findPids backend = do
 gatherDeps :: ProcessId -> Network -> Process [ProcessDeps]
 gatherDeps me pids = do
     mapM_ (flip send (Ping me)) pids
-    catMaybes <$>
-        replicateM
-            (length pids)
-            (receiveTimeout 100000 [match $ \(PD pd) -> pure pd])
+    replicateM (length pids) (receiveWait [match $ \(PD pd) -> pure pd])
 
 -----------------------------------------------------------------------------------
 -- RECEIVE FILES ==================================================================

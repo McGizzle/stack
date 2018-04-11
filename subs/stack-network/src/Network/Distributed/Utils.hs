@@ -12,6 +12,8 @@ import           System.IO                 (BufferMode (..), hGetContents,
                                             hSetBuffering)
 import           System.Process
 
+import           Debug.Trace
+
 -- CONFIG ==========================================================================
 parseNetConfig :: IO NetworkConfig
 parseNetConfig = do
@@ -46,15 +48,15 @@ listDeps =
         hSetBuffering hStdout NoBuffering
         exit_code <- waitForProcess p
         case exit_code of
-            ExitSuccess   -> lines <$> hGetContents hStdout
-            ExitFailure _ -> pure []
+            ExitSuccess -> lines <$> hGetContents hStdout
+            ExitFailure _ -> logWarn "Error calculating dependencies" *> pure []
 
 -- FIND BEST MATCH ==================================================================
-getBestPid :: [ProcessDeps] -> [String] -> (Maybe Node, Int) -> Maybe Node
+getBestPid :: [(Deps, Node)] -> Deps -> (Maybe Node, Int) -> Maybe Node
 getBestPid [] _ best = fst best
-getBestPid ((curDeps, curPid):xs) cmpDeps (pid, best)
-    | curLen > best = recurse (Just curPid, curLen)
-    | otherwise = recurse (pid, best)
+getBestPid ((curDeps, curPid):xs) cmpDeps curBest
+    | traceShow curLen $ curLen > (snd curBest) = recurse (Just curPid, curLen)
+    | otherwise = recurse curBest
   where
     curLen = length (curDeps `intersect` cmpDeps)
     recurse n = getBestPid xs cmpDeps n

@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE RecordWildCards    #-}
 
 module Network.Distributed.Types where
 
@@ -14,7 +15,11 @@ import           GHC.Generics                (Generic)
 data NetworkConfig = NetworkConfig
     { hostNetworkConfig :: String
     , portNetworkConfig :: String
-    } deriving (Show)
+    }
+
+instance Show NetworkConfig where
+    show NetworkConfig {..} =
+        "//" ++ hostNetworkConfig ++ ":" ++ portNetworkConfig
 
 type Node = ProcessId
 
