@@ -102,7 +102,7 @@ import           Stack.Types.Nix
 import           Stack.Upgrade
 import qualified Stack.Upload as Upload
 import qualified System.Directory as D
-import           System.Environment (getProgName, getArgs, withArgs)
+import           System.Environment (getProgName, getArgs, withArgs, setEnv)
 import           System.Exit
 import           System.FilePath (isValid, pathSeparator)
 import           System.IO (stderr, stdin, stdout, BufferMode(..), hPutStrLn, hGetEncoding, hSetEncoding)
@@ -246,6 +246,10 @@ commandLineHandler currentDir progName isInterpreter = complicatedOptions
         addBuildCommand' "build"
                          "Build the package(s) in this directory/configuration"
                          buildCmd
+                         (buildOptsParser Build)
+        addBuildCommand' "network-build"
+                         "Build the package(s) in this directory/configuration in Network mode"
+                         buildNetworkCmd
                          (buildOptsParser Build)
         addBuildCommand' "install"
                          "Shortcut for 'build --copy-bins'"
@@ -624,6 +628,13 @@ cleanCmd opts go =
   case opts of
     CleanFull{} -> withBuildConfigAndLock go (const (clean opts))
     CleanShallow{} -> withBuildConfigAndLockNoDocker go (const (clean opts))
+
+buildNetworkCmd :: BuildOptsCLI -> GlobalOpts -> IO ()
+buildNetworkCmd opts go = do
+  dir <- D.getCurrentDirectory
+  System.Environment.setEnv "STACK_ROOT" (dir ++ "/root")
+  runRequestNode =<< parseNetConfig
+  buildCmd opts go
 
 -- | Helper for build and install commands
 buildCmd :: BuildOptsCLI -> GlobalOpts -> IO ()
