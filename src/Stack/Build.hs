@@ -80,7 +80,7 @@ build ::
 build setLocalFiles mbuildLk boptsCli =
     fixCodePage $ do
         when (boptsCLINetwork boptsCli) $
-            liftIO $ do runRequestNode =<< parseNetConfig
+            liftIO $ do runRequestNode 1 =<< parseNetConfig
         bopts <- view buildOptsL
         let profiling = boptsLibProfile bopts || boptsExeProfile bopts
         let symbols = not (boptsLibStrip bopts || boptsExeStrip bopts)

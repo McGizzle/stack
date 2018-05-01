@@ -633,7 +633,7 @@ buildNetworkCmd :: BuildOptsCLI -> GlobalOpts -> IO ()
 buildNetworkCmd opts go = do
   dir <- D.getCurrentDirectory
   System.Environment.setEnv "STACK_ROOT" (dir ++ "/root")
-  runRequestNode =<< parseNetConfig
+  runRequestNode 0 =<< parseNetConfig
   buildCmd opts go
 
 -- | Helper for build and install commands
